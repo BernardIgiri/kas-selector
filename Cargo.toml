@@ -1,0 +1,13 @@
+[package]
+name = "kas-selector"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+derive-new = "0.7.0"
+fluent-bundle = "0.16.0"
+fluent-resmgr = "0.0.8"
+gtk = { version = "0.9.7", package = "gtk4", features = ["v4_14"] }
+relm4 = "0.9.1"
+relm4-components = "0.9.1"
+unic-langid = "0.9.6"
