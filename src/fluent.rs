@@ -1,0 +1,76 @@
+use fluent_bundle::{FluentArgs, FluentBundle, FluentResource};
+use std::{fmt::Debug, fs};
+use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
+use unic_langid::LanguageIdentifier;
+
+use crate::error;
+
+#[derive(EnumString, EnumIter, Display, Debug)]
+#[strum(serialize_all = "kebab-case")]
+pub enum Key {
+    Title,
+    ChooseScript,
+    EventActivated,
+    EventDeactivated,
+    EventStarted,
+    EventStopped,
+}
+
+pub struct FluentLocale {
+    bundle: FluentBundle<FluentResource>,
+}
+
+impl FluentLocale {
+    pub fn try_new(lang: &str) -> Result<Self, error::Application> {
+        let lang_id: LanguageIdentifier =
+            lang.parse().map_err(|_| error::InvalidConfiguration {
+                config: "Language",
+                identifier: lang.into(),
+            })?;
+        let path = format!("locales/{lang_id}/main.ftl");
+        let source = fs::read_to_string(&path).map_err(|_| error::InvalidConfiguration {
+            config: "Fluent file",
+            identifier: path.clone(),
+        })?;
+        let resource =
+            FluentResource::try_new(source).map_err(|_| error::InvalidConfiguration {
+                config: "Fluent syntax",
+                identifier: path.clone(),
+            })?;
+
+        let mut bundle = FluentBundle::new(vec![lang_id]);
+        bundle
+            .add_resource(resource)
+            .map_err(|_| error::InvalidConfiguration {
+                config: "Fluent bundle",
+                identifier: path,
+            })?;
+        for key in Key::iter() {
+            if !bundle.has_message(key.to_string().as_str()) {
+                return Err(error::InvalidConfiguration {
+                    config: "Fluent key missing",
+                    identifier: key.to_string(),
+                });
+            }
+        }
+        Ok(Self { bundle })
+    }
+
+    pub fn text(&self, key: Key, args: Option<&FluentArgs>) -> String {
+        #[allow(clippy::expect_used)]
+        let pattern = self
+            .bundle
+            .get_message(key.to_string().as_str())
+            .and_then(|msg| msg.value())
+            .expect("All keys were validated during construction!");
+        self.bundle
+            .format_pattern(pattern, args, &mut vec![])
+            .to_string()
+    }
+}
+
+impl Debug for FluentLocale {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("FluentLocal")
+    }
+}

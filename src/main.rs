@@ -1,17 +1,17 @@
-use derive_new::new;
-use fluent_resmgr::ResourceManager;
-use gtk::prelude::*;
+#![deny(clippy::unwrap_used, clippy::expect_used)]
+#![warn(clippy::all, clippy::nursery)]
+
+mod error;
+mod fluent;
+
+use fluent::FluentLocale;
+use gtk::{StringList, prelude::*};
 use relm4::prelude::*;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::PathBuf;
-use std::sync::LazyLock;
+use strum::{EnumIter, IntoEnumIterator};
 
-use fluent_bundle::FluentArgs;
-
-use unic_langid::LanguageIdentifier;
-
-// KDE-style locale resolution
 fn get_kde_preferred_language() -> String {
     std::env::var("LANGUAGE")
         .or_else(|_| std::env::var("LC_MESSAGES"))
@@ -23,38 +23,7 @@ fn get_kde_preferred_language() -> String {
         .replace('_', "-")
 }
 
-static LANG_ID: LazyLock<LanguageIdentifier> = LazyLock::new(|| {
-    get_kde_preferred_language()
-        .parse()
-        .unwrap_or_else(|_| "en-US".parse().unwrap())
-});
-
-#[derive(new)]
-struct FluentLocale(ResourceManager);
-
-impl Debug for FluentLocale {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("FluentLocal")
-    }
-}
-
-impl FluentLocale {
-    pub fn tr(&self, key: &str, args: Option<&FluentArgs>) -> String {
-        let bundle = self.0.get_bundle(vec![LANG_ID.clone()], vec![]).unwrap();
-        let pattern = match bundle.get_message(key).and_then(|msg| msg.value()) {
-            Some(p) => p,
-            None => {
-                eprintln!("⚠️ Missing translation key: {key}");
-                return key.to_string();
-            }
-        };
-        bundle
-            .format_pattern(pattern, args, &mut vec![])
-            .to_string()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, EnumIter)]
 enum Event {
     Activated,
     Deactivated,
@@ -63,17 +32,13 @@ enum Event {
 }
 
 impl Event {
-    fn all() -> &'static [Event] {
-        use Event::*;
-        &[Activated, Deactivated, Started, Stopped]
-    }
-
-    fn as_key(&self) -> &'static str {
+    pub const fn as_key(&self) -> fluent::Key {
+        use fluent::Key as K;
         match self {
-            Event::Activated => "event-activated",
-            Event::Deactivated => "event-deactivated",
-            Event::Started => "event-started",
-            Event::Stopped => "event-stopped",
+            Self::Activated => K::EventActivated,
+            Self::Deactivated => K::EventDeactivated,
+            Self::Started => K::EventStarted,
+            Self::Stopped => K::EventStopped,
         }
     }
 }
@@ -82,7 +47,7 @@ impl Event {
 struct Activity {
     name: String,
     id: String,
-    event_scripts: HashMap<Event, Option<PathBuf>>, // None = no script assigned
+    event_scripts: HashMap<Event, Option<PathBuf>>,
 }
 
 #[derive(Debug)]
@@ -120,10 +85,12 @@ impl Component for AppModel {
         window: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let locale = FluentLocale::new(ResourceManager::new(
-            "locales/{locale}/main.ftl".to_string(),
-        ));
-        let model = AppModel { activities, locale };
+        let lang = &get_kde_preferred_language();
+        let locale = FluentLocale::try_new(lang).unwrap_or_else(|e| {
+            eprintln!("Failed to initialize localization: {e}");
+            std::process::exit(1);
+        });
+        let model = Self { activities, locale };
         let vbox = gtk::Box::new(gtk::Orientation::Vertical, 12);
 
         let mut rows = vec![];
@@ -132,16 +99,16 @@ impl Component for AppModel {
             let frame = gtk::Frame::new(Some(&activity.name));
             let inner = gtk::Box::new(gtk::Orientation::Vertical, 6);
 
-            for event in Event::all() {
+            for event in Event::iter() {
                 let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 6);
 
-                let label = gtk::Label::new(Some(&model.locale.tr(event.as_key(), None)));
+                let label = gtk::Label::new(Some(&model.locale.text(event.as_key(), None)));
                 label.set_xalign(0.0);
 
                 let path_label = gtk::Label::new(
                     activity
                         .event_scripts
-                        .get(event)
+                        .get(&event)
                         .and_then(|p| p.as_ref())
                         .map(|p| p.to_string_lossy().to_string())
                         .as_deref(),
@@ -149,7 +116,8 @@ impl Component for AppModel {
                 path_label.set_xalign(0.0);
                 path_label.set_hexpand(true);
 
-                let button = gtk::Button::with_label(&model.locale.tr("choose-script", None));
+                let button =
+                    gtk::Button::with_label(&model.locale.text(fluent::Key::ChooseScript, None));
                 let event_clone = event.clone();
                 let sender_clone = sender.clone();
                 button.connect_clicked(move |_| {
@@ -168,6 +136,7 @@ impl Component for AppModel {
         }
 
         window.set_child(Some(&vbox));
+        window.set_title(Some(&model.locale.text(fluent::Key::Title, None)));
 
         let widgets = AppWidgets { rows };
         ComponentParts { model, widgets }
@@ -202,28 +171,5 @@ fn main() {
         },
     ];
 
-    relm4::RelmApp::new("kde-script-binder").run::<AppModel>(mock_data);
+    relm4::RelmApp::new("kas-selector").run::<AppModel>(mock_data);
 }
-
-// fn open_file_dialog(parent: &Window) -> Option<PathBuf> {
-//     let dialog = FileChooserDialog::new(
-//         Some("Choose a script"),
-//         Some(parent),
-//         FileChooserAction::Open,
-//         &[("Cancel", ResponseType::Cancel), ("Open", ResponseType::Accept)],
-//     );
-
-//     let filter = FileFilter::new();
-//     filter.add_pattern("*.sh");
-//     filter.set_name(Some("Shell scripts"));
-//     dialog.add_filter(&filter);
-
-//     let result = if dialog.run() == ResponseType::Accept {
-//         dialog.file().and_then(|f| f.path())
-//     } else {
-//         None
-//     };
-
-//     dialog.close();
-//     result
-// }

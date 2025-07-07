@@ -10,4 +10,6 @@ fluent-resmgr = "0.0.8"
 gtk = { version = "0.9.7", package = "gtk4", features = ["v4_14"] }
 relm4 = "0.9.1"
 relm4-components = "0.9.1"
+strum = { version = "0.27.1", features = ["derive"] }
+thiserror = "2.0.12"
 unic-langid = "0.9.6"
