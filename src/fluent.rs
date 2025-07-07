@@ -1,5 +1,5 @@
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource};
-use std::{fmt::Debug, fs};
+use std::{fmt::Debug, fs, sync::Arc};
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 use unic_langid::LanguageIdentifier;
 
@@ -14,10 +14,14 @@ pub enum Key {
     EventDeactivated,
     EventStarted,
     EventStopped,
+    Open,
+    Cancel,
+    Save,
 }
 
+#[derive(Clone)]
 pub struct FluentLocale {
-    bundle: FluentBundle<FluentResource>,
+    bundle: Arc<FluentBundle<FluentResource>>,
 }
 
 impl FluentLocale {
@@ -53,7 +57,9 @@ impl FluentLocale {
                 });
             }
         }
-        Ok(Self { bundle })
+        Ok(Self {
+            bundle: Arc::new(bundle),
+        })
     }
 
     pub fn text(&self, key: Key, args: Option<&FluentArgs>) -> String {

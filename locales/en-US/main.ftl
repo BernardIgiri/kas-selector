@@ -4,3 +4,6 @@ event-activated = Activated
 event-deactivated = Deactivated
 event-started = Started
 event-stopped = Stopped
+open = Open
+cancel = Cancel
+save = Save

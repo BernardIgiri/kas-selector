@@ -5,8 +5,11 @@ mod error;
 mod fluent;
 
 use fluent::FluentLocale;
-use gtk::{StringList, prelude::*};
+use gtk::prelude::*;
 use relm4::prelude::*;
+use relm4_components::open_dialog::{
+    OpenDialog, OpenDialogMsg, OpenDialogResponse, OpenDialogSettings,
+};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::PathBuf;
@@ -24,14 +27,14 @@ fn get_kde_preferred_language() -> String {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, EnumIter)]
-enum Event {
+enum ActivityEvent {
     Activated,
     Deactivated,
     Started,
     Stopped,
 }
 
-impl Event {
+impl ActivityEvent {
     pub const fn as_key(&self) -> fluent::Key {
         use fluent::Key as K;
         match self {
@@ -47,42 +50,64 @@ impl Event {
 struct Activity {
     name: String,
     id: String,
-    event_scripts: HashMap<Event, Option<PathBuf>>,
+    event_scripts: HashMap<ActivityEvent, Option<PathBuf>>,
 }
 
 #[derive(Debug)]
 struct AppModel {
     activities: Vec<Activity>,
+    selected_activity_index: usize,
     locale: FluentLocale,
+    open_dialog: Controller<OpenDialog>,
+    pending_event: ActivityEvent,
 }
 
 #[derive(Debug)]
 enum AppMsg {
-    ChooseScript(usize, Event),
-    ScriptChosen(usize, Event, PathBuf),
+    ChooseActivity(usize),
+    ChooseScript(ActivityEvent),
+    ScriptChosen(PathBuf),
+    ChooseScriptCancel,
 }
 
-struct AppWidgets {
-    rows: Vec<gtk::Box>,
-}
-
-impl Component for AppModel {
-    fn init_root() -> Self::Root {
-        gtk::ApplicationWindow::builder()
-            .default_width(600)
-            .default_height(400)
-            .build()
-    }
-    type CommandOutput = ();
+#[relm4::component]
+impl SimpleComponent for AppModel {
     type Init = Vec<Activity>;
     type Input = AppMsg;
-    type Output = (); // No output for now
-    type Root = gtk::ApplicationWindow;
-    type Widgets = AppWidgets;
+    type Output = ();
+
+    view! {
+        #[root]
+        window = gtk::ApplicationWindow {
+            set_title: Some(&model.locale.text(fluent::Key::Title, None)),
+            set_default_width: 600,
+            set_default_height: 400,
+
+            gtk::Box {
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 12,
+                set_margin_all: 12,
+
+                #[name = "dropdown"]
+                gtk::DropDown::from_strings(&model.activities.iter().map(|a| a.name.as_str()).collect::<Vec<_>>()) {
+                    connect_selected_notify[sender] => move |dropdown| {
+                        sender.input(AppMsg::ChooseActivity(dropdown.selected() as usize))
+                    },
+                    set_selected: model.selected_activity_index as u32,
+                },
+
+                #[name = "events_box"]
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 6,
+                },
+            }
+        }
+    }
 
     fn init(
         activities: Self::Init,
-        window: Self::Root,
+        root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let lang = &get_kde_preferred_language();
@@ -90,69 +115,74 @@ impl Component for AppModel {
             eprintln!("Failed to initialize localization: {e}");
             std::process::exit(1);
         });
-        let model = Self { activities, locale };
-        let vbox = gtk::Box::new(gtk::Orientation::Vertical, 12);
+        let open_dialog = OpenDialog::builder()
+            .transient_for_native(&root)
+            .launch(OpenDialogSettings::default())
+            .forward(sender.input_sender(), |response| match response {
+                OpenDialogResponse::Accept(path) => AppMsg::ScriptChosen(path),
+                OpenDialogResponse::Cancel => AppMsg::ChooseScriptCancel,
+            });
 
-        let mut rows = vec![];
+        let model = Self {
+            activities,
+            selected_activity_index: 0,
+            locale,
+            open_dialog,
+            pending_event: ActivityEvent::Activated,
+        };
+        let widgets = view_output!();
 
-        for (i, activity) in model.activities.iter().enumerate() {
-            let frame = gtk::Frame::new(Some(&activity.name));
-            let inner = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        for event in ActivityEvent::iter() {
+            let label_text = model.locale.text(event.as_key(), None);
+            let script_path = model
+                .activities
+                .get(model.selected_activity_index)
+                .and_then(|a| a.event_scripts.get(&event))
+                .and_then(|p| p.as_ref())
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
 
-            for event in Event::iter() {
-                let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
 
-                let label = gtk::Label::new(Some(&model.locale.text(event.as_key(), None)));
-                label.set_xalign(0.0);
+            let label = gtk::Label::new(Some(&label_text));
+            label.set_xalign(0.0);
+            row.append(&label);
 
-                let path_label = gtk::Label::new(
-                    activity
-                        .event_scripts
-                        .get(&event)
-                        .and_then(|p| p.as_ref())
-                        .map(|p| p.to_string_lossy().to_string())
-                        .as_deref(),
-                );
-                path_label.set_xalign(0.0);
-                path_label.set_hexpand(true);
+            let path_label = gtk::Label::new(Some(&script_path));
+            path_label.set_xalign(0.0);
+            path_label.set_hexpand(true);
+            row.append(&path_label);
 
-                let button =
-                    gtk::Button::with_label(&model.locale.text(fluent::Key::ChooseScript, None));
-                let event_clone = event.clone();
-                let sender_clone = sender.clone();
-                button.connect_clicked(move |_| {
-                    sender_clone.input(AppMsg::ChooseScript(i, event_clone.clone()));
-                });
+            let button =
+                gtk::Button::with_label(&model.locale.text(fluent::Key::ChooseScript, None));
+            let event_clone = event.clone();
+            let sender_clone = sender.clone();
+            button.connect_clicked(move |_| {
+                sender_clone.input(AppMsg::ChooseScript(event_clone.clone()));
+            });
+            row.append(&button);
 
-                hbox.append(&label);
-                hbox.append(&path_label);
-                hbox.append(&button);
-                inner.append(&hbox);
-            }
-
-            frame.set_child(Some(&inner));
-            vbox.append(&frame);
-            rows.push(inner);
+            widgets.events_box.append(&row);
         }
-
-        window.set_child(Some(&vbox));
-        window.set_title(Some(&model.locale.text(fluent::Key::Title, None)));
-
-        let widgets = AppWidgets { rows };
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: AppMsg, _sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update(&mut self, msg: AppMsg, _sender: ComponentSender<Self>) {
+        dbg!(&msg);
         match msg {
-            AppMsg::ChooseScript(activity_idx, event) => {
-                println!("Open file dialog for activity {activity_idx} event {event:?}");
-                // Hook up FileChooserDialog in future
+            AppMsg::ChooseActivity(index) => {
+                self.selected_activity_index = index;
             }
-            AppMsg::ScriptChosen(activity_idx, event, path) => {
-                if let Some(activity) = self.activities.get_mut(activity_idx) {
-                    activity.event_scripts.insert(event, Some(path));
-                }
+            AppMsg::ChooseScript(event) => {
+                self.pending_event = event;
+                self.open_dialog.emit(OpenDialogMsg::Open);
             }
+            AppMsg::ScriptChosen(path_buf) => {
+                self.activities[self.selected_activity_index]
+                    .event_scripts
+                    .insert(self.pending_event.clone(), Some(path_buf));
+            }
+            AppMsg::ChooseScriptCancel => {}
         }
     }
 }
