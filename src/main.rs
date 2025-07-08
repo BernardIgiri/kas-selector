@@ -2,10 +2,12 @@
 #![warn(clippy::all, clippy::nursery)]
 
 mod activity;
+mod config;
 mod error;
 mod locale;
 
 use activity::{Activity, ActivityEvent};
+use config::Config;
 use gtk::prelude::*;
 use locale::FluentLocale;
 use relm4::prelude::*;
@@ -30,6 +32,7 @@ fn get_kde_preferred_language() -> String {
 
 #[derive(Debug)]
 struct AppModel {
+    config: Config,
     activities: Vec<Activity>,
     selected_activity_index: usize,
     locale: FluentLocale,
@@ -49,10 +52,15 @@ enum AppMsg {
     SaveStarted,
     SaveFinished,
 }
+#[derive(Debug)]
+struct AppInit {
+    config: Config,
+    activities: Vec<Activity>,
+}
 
 #[relm4::component]
 impl Component for AppModel {
-    type Init = Vec<Activity>;
+    type Init = AppInit;
     type Input = AppMsg;
     type Output = ();
     type CommandOutput = AppMsg;
@@ -86,18 +94,19 @@ impl Component for AppModel {
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 6,
+                    set_halign: gtk::Align::End,
 
-                    #[name = "save_button"]
-                    gtk::Button::with_label(&model.locale.text(locale::Key::Save, None)),
                     #[name = "exit_button"]
                     gtk::Button::with_label(&model.locale.text(locale::Key::Exit, None)),
+                    #[name = "save_button"]
+                    gtk::Button::with_label(&model.locale.text(locale::Key::Save, None)),
                 }
             }
         }
     }
 
     fn init(
-        activities: Self::Init,
+        init: Self::Init,
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
@@ -115,7 +124,8 @@ impl Component for AppModel {
             });
 
         let mut model = Self {
-            activities,
+            config: init.config,
+            activities: init.activities,
             selected_activity_index: 0,
             locale,
             open_dialog,
@@ -174,14 +184,9 @@ impl Component for AppModel {
         ComponentParts { model, widgets }
     }
 
-    fn update_cmd(
-        &mut self,
-        msg: Self::CommandOutput,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
-        dbg!(&msg);
-        match msg {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
+        dbg!(&message);
+        match message {
             AppMsg::ChooseActivity(index) => {
                 self.selected_activity_index = index;
             }
@@ -212,13 +217,13 @@ impl Component for AppModel {
             }
             AppMsg::SaveStarted => {
                 let activities = self.activities.clone();
-                let root_path =
-                    PathBuf::from("/home/bigiri/.local/share/kactivitymanagerd/activities");
-                let script_filename = "activity_script";
+                let config = self.config.clone();
                 sender.oneshot_command(async move {
-                    if let Err(e) =
-                        Activity::save_activities(&root_path, script_filename, &activities).await
-                    {
+                    if let Err(e) = Activity::save_activities(
+                        config.root_path(),
+                        config.script_filename(),
+                        &activities,
+                    ) {
                         eprintln!("{e}");
                     }
                     AppMsg::SaveFinished
@@ -232,9 +237,11 @@ impl Component for AppModel {
 fn main() {
     let root_path = PathBuf::from("/home/bigiri/.local/share/kactivitymanagerd/activities");
     let script_filename = "activity_script";
-    // let activities = Activity::from_env(&root_path, script_filename).unwrap_or_else(|e| {
-    //     eprintln!("Failed to load activity data: {e}");
-    //     std::process::exit(1);
-    // });
-    relm4::RelmApp::new("kas-selector").run::<AppModel>(vec![]);
+    let config = Config::new(root_path, script_filename.into());
+    let activities = Activity::from_env(config.root_path(), config.script_filename())
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to load activity data: {e}");
+            std::process::exit(1);
+        });
+    relm4::RelmApp::new("kas-selector").run::<AppModel>(AppInit { config, activities });
 }

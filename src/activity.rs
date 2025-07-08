@@ -55,7 +55,7 @@ impl Activity {
     pub fn delete_script(&mut self, event: ActivityEvent) {
         self.event_scripts.remove(&event);
     }
-    pub async fn from_env(
+    pub fn from_env(
         root_folder: &Path,
         script_filename: &str,
     ) -> Result<Vec<Self>, error::Application> {
@@ -81,13 +81,10 @@ impl Activity {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let scripts = Self::load_scripts(root_folder, script_filename).await?;
+        let scripts = Self::load_scripts(root_folder, script_filename)?;
         Self::from_activity_data(&stdout, scripts)
     }
-    async fn load_scripts(
-        root: &Path,
-        script_filename: &str,
-    ) -> Result<ScriptMap, error::Application> {
+    fn load_scripts(root: &Path, script_filename: &str) -> Result<ScriptMap, error::Application> {
         let mut scripts = ScriptMap::new();
         for entry in fs::read_dir(root).map_err(|e| error::BadInitData {
             category: "reading root script directory",
@@ -196,7 +193,7 @@ impl Activity {
 
         Ok(activities)
     }
-    pub async fn save_activities(
+    pub fn save_activities(
         root: &Path,
         script_filename: &str,
         activities: &[Self],
@@ -298,8 +295,8 @@ mod tests {
         let b = activities.iter().find(|a| a.id() == "some-id-b").unwrap();
         assert_that!(b.event_scripts()).is_equal_to(&events_b);
     }
-    #[tokio::test]
-    async fn load_scripts_reads_symlink_structure() {
+    #[test]
+    fn load_scripts_reads_symlink_structure() {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
@@ -315,7 +312,7 @@ mod tests {
         let symlink_path = activity_dir.join("kas-script.sh");
         symlink(&actual_script, &symlink_path).unwrap();
 
-        let result = Activity::load_scripts(root, "kas-script.sh").await.unwrap();
+        let result = Activity::load_scripts(root, "kas-script.sh").unwrap();
 
         assert_that!(result.len()).is_equal_to(1);
         let event_map = result.get(activity_id).unwrap();
@@ -323,8 +320,8 @@ mod tests {
         assert_that!(event_map.len()).is_equal_to(1);
         assert_that!(event_map.get(&ActivityEvent::Activated).unwrap()).is_equal_to(&symlink_path);
     }
-    #[tokio::test]
-    async fn save_activities_writes_symlink_structure() {
+    #[test]
+    fn save_activities_writes_symlink_structure() {
         let tmp = tempdir().unwrap();
         let root = tmp.path();
 
@@ -340,9 +337,7 @@ mod tests {
             event_scripts: events,
         };
 
-        Activity::save_activities(root, "kas-script.sh", &[activity])
-            .await
-            .unwrap();
+        Activity::save_activities(root, "kas-script.sh", &[activity]).unwrap();
 
         let link_path = root.join("a-1/started/kas-script.sh");
         let meta = symlink_metadata(&link_path).unwrap();
