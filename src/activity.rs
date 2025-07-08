@@ -55,7 +55,10 @@ impl Activity {
     pub fn delete_script(&mut self, event: ActivityEvent) {
         self.event_scripts.remove(&event);
     }
-    pub fn from_env(root_folder: &Path) -> Result<Vec<Self>, error::Application> {
+    pub fn from_env(
+        root_folder: &Path,
+        script_filename: &str,
+    ) -> Result<Vec<Self>, error::Application> {
         let output = Command::new("qdbus")
             .args([
                 "--literal",
@@ -78,10 +81,10 @@ impl Activity {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let scripts = Self::load_scripts(root_folder)?;
+        let scripts = Self::load_scripts(root_folder, script_filename)?;
         Self::from_activity_data(&stdout, scripts)
     }
-    fn load_scripts(root: &Path) -> Result<ScriptMap, error::Application> {
+    fn load_scripts(root: &Path, script_filename: &str) -> Result<ScriptMap, error::Application> {
         let mut scripts = ScriptMap::new();
         for entry in fs::read_dir(root).map_err(|e| error::BadInitData {
             category: "reading root script directory",
@@ -135,7 +138,7 @@ impl Activity {
                     "stopped" => Some(ActivityEvent::Stopped),
                     _ => None,
                 } {
-                    let script_path = event_path.join("kas-script.sh");
+                    let script_path = event_path.join(script_filename);
                     if script_path.exists() {
                         event_map.insert(event, script_path);
                     }
@@ -151,7 +154,6 @@ impl Activity {
         data: &str,
         scripts: ScriptMap,
     ) -> Result<Vec<Self>, error::Application> {
-        // Strip header/trailer, then split on "], ["
         let cleaned = data
             .trim_start_matches(|c| c != '{')
             .trim_start_matches('{')
@@ -191,11 +193,15 @@ impl Activity {
 
         Ok(activities)
     }
-    pub fn save_activities(root: &Path, activities: &[Self]) -> Result<(), error::Application> {
+    pub fn save_activities(
+        root: &Path,
+        script_filename: &str,
+        activities: &[Self],
+    ) -> Result<(), error::Application> {
         for activity in activities {
             for (event, script_path) in &activity.event_scripts {
                 let dest_dir = root.join(&activity.id).join(event.to_string());
-                let dest_path = dest_dir.join("kas-script.sh");
+                let dest_path = dest_dir.join(script_filename);
 
                 fs::create_dir_all(&dest_dir).map_err(|_| error::SaveDataError {
                     activity: activity.name().clone(),
@@ -306,7 +312,7 @@ mod tests {
         let symlink_path = activity_dir.join("kas-script.sh");
         symlink(&actual_script, &symlink_path).unwrap();
 
-        let result = Activity::load_scripts(root).unwrap();
+        let result = Activity::load_scripts(root, "kas-script.sh").unwrap();
 
         assert_that!(result.len()).is_equal_to(1);
         let event_map = result.get(activity_id).unwrap();
@@ -331,7 +337,7 @@ mod tests {
             event_scripts: events,
         };
 
-        Activity::save_activities(root, &[activity]).unwrap();
+        Activity::save_activities(root, "kas-script.sh", &[activity]).unwrap();
 
         let link_path = root.join("a-1/started/kas-script.sh");
         let meta = symlink_metadata(&link_path).unwrap();

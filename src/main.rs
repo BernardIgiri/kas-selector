@@ -185,10 +185,11 @@ impl SimpleComponent for AppModel {
 }
 
 fn main() {
-    let path = PathBuf::from("/home/bigiri/.local/share/kactivitymanagerd/activities");
-    let mock_data = Activity::from_env(&path).unwrap_or_else(|e| {
+    let root_path = PathBuf::from("/home/bigiri/.local/share/kactivitymanagerd/activities");
+    let script_filename = "activity_script";
+    let activities = Activity::from_env(&root_path, script_filename).unwrap_or_else(|e| {
         eprintln!("Failed to load activity data: {e}");
         std::process::exit(1);
     });
-    relm4::RelmApp::new("kas-selector").run::<AppModel>(mock_data);
+    relm4::RelmApp::new("kas-selector").run::<AppModel>(activities);
 }
