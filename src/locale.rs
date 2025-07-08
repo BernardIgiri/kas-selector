@@ -1,4 +1,4 @@
-use fluent_bundle::{FluentArgs, FluentBundle, FluentResource};
+use fluent_bundle::{FluentArgs, FluentResource, concurrent::FluentBundle};
 use std::{fmt::Debug, fs, sync::Arc};
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 use unic_langid::LanguageIdentifier;
@@ -26,34 +26,32 @@ pub struct FluentLocale {
 
 impl FluentLocale {
     pub fn try_new(lang: &str) -> Result<Self, error::Application> {
-        let lang_id: LanguageIdentifier =
-            lang.parse().map_err(|_| error::InvalidConfiguration {
-                config: "Language",
-                identifier: lang.into(),
-            })?;
-        let path = format!("locales/{lang_id}/main.ftl");
-        let source = fs::read_to_string(&path).map_err(|_| error::InvalidConfiguration {
-            config: "Fluent file",
-            identifier: path.clone(),
+        let lang_id: LanguageIdentifier = lang.parse().map_err(|_| error::BadInitData {
+            category: "Language",
+            value: lang.into(),
         })?;
-        let resource =
-            FluentResource::try_new(source).map_err(|_| error::InvalidConfiguration {
-                config: "Fluent syntax",
-                identifier: path.clone(),
-            })?;
+        let path = format!("locales/{lang_id}/main.ftl");
+        let source = fs::read_to_string(&path).map_err(|_| error::BadInitData {
+            category: "Fluent file",
+            value: path.clone(),
+        })?;
+        let resource = FluentResource::try_new(source).map_err(|_| error::BadInitData {
+            category: "Fluent syntax",
+            value: path.clone(),
+        })?;
 
-        let mut bundle = FluentBundle::new(vec![lang_id]);
+        let mut bundle = FluentBundle::new_concurrent(vec![lang_id]);
         bundle
             .add_resource(resource)
-            .map_err(|_| error::InvalidConfiguration {
-                config: "Fluent bundle",
-                identifier: path,
+            .map_err(|_| error::BadInitData {
+                category: "Fluent bundle",
+                value: path,
             })?;
         for key in Key::iter() {
             if !bundle.has_message(key.to_string().as_str()) {
-                return Err(error::InvalidConfiguration {
-                    config: "Fluent key missing",
-                    identifier: key.to_string(),
+                return Err(error::BadInitData {
+                    category: "Fluent key missing",
+                    value: key.to_string(),
                 });
             }
         }

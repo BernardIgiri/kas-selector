@@ -1,11 +1,13 @@
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 #![warn(clippy::all, clippy::nursery)]
 
+mod activity;
 mod error;
-mod fluent;
+mod locale;
 
-use fluent::FluentLocale;
+use activity::{Activity, ActivityEvent};
 use gtk::prelude::*;
+use locale::FluentLocale;
 use relm4::prelude::*;
 use relm4_components::open_dialog::{
     OpenDialog, OpenDialogMsg, OpenDialogResponse, OpenDialogSettings,
@@ -13,7 +15,7 @@ use relm4_components::open_dialog::{
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::PathBuf;
-use strum::{EnumIter, IntoEnumIterator};
+use strum::IntoEnumIterator;
 
 fn get_kde_preferred_language() -> String {
     std::env::var("LANGUAGE")
@@ -26,33 +28,6 @@ fn get_kde_preferred_language() -> String {
         .replace('_', "-")
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, EnumIter)]
-enum ActivityEvent {
-    Activated,
-    Deactivated,
-    Started,
-    Stopped,
-}
-
-impl ActivityEvent {
-    pub const fn as_key(&self) -> fluent::Key {
-        use fluent::Key as K;
-        match self {
-            Self::Activated => K::EventActivated,
-            Self::Deactivated => K::EventDeactivated,
-            Self::Started => K::EventStarted,
-            Self::Stopped => K::EventStopped,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Activity {
-    name: String,
-    id: String,
-    event_scripts: HashMap<ActivityEvent, Option<PathBuf>>,
-}
-
 #[derive(Debug)]
 struct AppModel {
     activities: Vec<Activity>,
@@ -60,12 +35,14 @@ struct AppModel {
     locale: FluentLocale,
     open_dialog: Controller<OpenDialog>,
     pending_event: ActivityEvent,
+    path_labels: HashMap<ActivityEvent, gtk::Label>,
 }
 
 #[derive(Debug)]
 enum AppMsg {
     ChooseActivity(usize),
     ChooseScript(ActivityEvent),
+    DeleteScript(ActivityEvent),
     ScriptChosen(PathBuf),
     ChooseScriptCancel,
 }
@@ -79,7 +56,7 @@ impl SimpleComponent for AppModel {
     view! {
         #[root]
         window = gtk::ApplicationWindow {
-            set_title: Some(&model.locale.text(fluent::Key::Title, None)),
+            set_title: Some(&model.locale.text(locale::Key::Title, None)),
             set_default_width: 600,
             set_default_height: 400,
 
@@ -89,7 +66,7 @@ impl SimpleComponent for AppModel {
                 set_margin_all: 12,
 
                 #[name = "dropdown"]
-                gtk::DropDown::from_strings(&model.activities.iter().map(|a| a.name.as_str()).collect::<Vec<_>>()) {
+                gtk::DropDown::from_strings(&model.activities.iter().map(|a| a.name().as_str()).collect::<Vec<_>>()) {
                     connect_selected_notify[sender] => move |dropdown| {
                         sender.input(AppMsg::ChooseActivity(dropdown.selected() as usize))
                     },
@@ -123,12 +100,13 @@ impl SimpleComponent for AppModel {
                 OpenDialogResponse::Cancel => AppMsg::ChooseScriptCancel,
             });
 
-        let model = Self {
+        let mut model = Self {
             activities,
             selected_activity_index: 0,
             locale,
             open_dialog,
             pending_event: ActivityEvent::Activated,
+            path_labels: HashMap::new(),
         };
         let widgets = view_output!();
 
@@ -137,8 +115,7 @@ impl SimpleComponent for AppModel {
             let script_path = model
                 .activities
                 .get(model.selected_activity_index)
-                .and_then(|a| a.event_scripts.get(&event))
-                .and_then(|p| p.as_ref())
+                .and_then(|a| a.event_scripts().get(&event))
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
 
@@ -152,13 +129,21 @@ impl SimpleComponent for AppModel {
             path_label.set_xalign(0.0);
             path_label.set_hexpand(true);
             row.append(&path_label);
+            model.path_labels.insert(event.clone(), path_label);
 
-            let button =
-                gtk::Button::with_label(&model.locale.text(fluent::Key::ChooseScript, None));
+            let button = gtk::Button::from_icon_name("edit");
             let event_clone = event.clone();
             let sender_clone = sender.clone();
             button.connect_clicked(move |_| {
                 sender_clone.input(AppMsg::ChooseScript(event_clone.clone()));
+            });
+            row.append(&button);
+
+            let button = gtk::Button::from_icon_name("delete");
+            let event_clone = event.clone();
+            let sender_clone = sender.clone();
+            button.connect_clicked(move |_| {
+                sender_clone.input(AppMsg::DeleteScript(event_clone.clone()));
             });
             row.append(&button);
 
@@ -179,27 +164,31 @@ impl SimpleComponent for AppModel {
             }
             AppMsg::ScriptChosen(path_buf) => {
                 self.activities[self.selected_activity_index]
-                    .event_scripts
-                    .insert(self.pending_event.clone(), Some(path_buf));
+                    .set_script(self.pending_event.clone(), path_buf.clone());
+                #[allow(clippy::expect_used)]
+                self.path_labels
+                    .get(&self.pending_event)
+                    .expect("Path labels for all events should exist.")
+                    .set_text(path_buf.to_string_lossy().as_ref());
             }
             AppMsg::ChooseScriptCancel => {}
+            AppMsg::DeleteScript(activity_event) => {
+                self.activities[self.selected_activity_index].delete_script(activity_event.clone());
+                #[allow(clippy::expect_used)]
+                self.path_labels
+                    .get(&activity_event)
+                    .expect("Path labels for all events should exist.")
+                    .set_text("");
+            }
         }
     }
 }
 
 fn main() {
-    let mock_data = vec![
-        Activity {
-            name: "Writing".to_string(),
-            id: "activity-123".to_string(),
-            event_scripts: HashMap::new(),
-        },
-        Activity {
-            name: "Gaming".to_string(),
-            id: "activity-456".to_string(),
-            event_scripts: HashMap::new(),
-        },
-    ];
-
+    let path = PathBuf::from("/home/bigiri/.local/share/kactivitymanagerd/activities");
+    let mock_data = Activity::from_env(&path).unwrap_or_else(|e| {
+        eprintln!("Failed to load activity data: {e}");
+        std::process::exit(1);
+    });
     relm4::RelmApp::new("kas-selector").run::<AppModel>(mock_data);
 }
