@@ -9,13 +9,12 @@ use crate::error;
 #[strum(serialize_all = "kebab-case")]
 pub enum Key {
     Title,
-    ChooseScript,
     EventActivated,
     EventDeactivated,
     EventStarted,
     EventStopped,
     Open,
-    Cancel,
+    Exit,
     Save,
 }
 

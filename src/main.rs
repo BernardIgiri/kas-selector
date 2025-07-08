@@ -45,13 +45,17 @@ enum AppMsg {
     DeleteScript(ActivityEvent),
     ScriptChosen(PathBuf),
     ChooseScriptCancel,
+    Exit,
+    SaveStarted,
+    SaveFinished,
 }
 
 #[relm4::component]
-impl SimpleComponent for AppModel {
+impl Component for AppModel {
     type Init = Vec<Activity>;
     type Input = AppMsg;
     type Output = ();
+    type CommandOutput = AppMsg;
 
     view! {
         #[root]
@@ -78,6 +82,16 @@ impl SimpleComponent for AppModel {
                     set_orientation: gtk::Orientation::Vertical,
                     set_spacing: 6,
                 },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 6,
+
+                    #[name = "save_button"]
+                    gtk::Button::with_label(&model.locale.text(locale::Key::Save, None)),
+                    #[name = "exit_button"]
+                    gtk::Button::with_label(&model.locale.text(locale::Key::Exit, None)),
+                }
             }
         }
     }
@@ -109,6 +123,14 @@ impl SimpleComponent for AppModel {
             path_labels: HashMap::new(),
         };
         let widgets = view_output!();
+        let sender_clone = sender.clone();
+        widgets.save_button.connect_clicked(move |_| {
+            sender_clone.input(AppMsg::SaveStarted);
+        });
+        let sender_clone = sender.clone();
+        widgets.exit_button.connect_clicked(move |_| {
+            sender_clone.input(AppMsg::Exit);
+        });
 
         for event in ActivityEvent::iter() {
             let label_text = model.locale.text(event.as_key(), None);
@@ -152,7 +174,12 @@ impl SimpleComponent for AppModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: AppMsg, _sender: ComponentSender<Self>) {
+    fn update_cmd(
+        &mut self,
+        msg: Self::CommandOutput,
+        sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
         dbg!(&msg);
         match msg {
             AppMsg::ChooseActivity(index) => {
@@ -180,6 +207,24 @@ impl SimpleComponent for AppModel {
                     .expect("Path labels for all events should exist.")
                     .set_text("");
             }
+            AppMsg::Exit => {
+                std::process::exit(0);
+            }
+            AppMsg::SaveStarted => {
+                let activities = self.activities.clone();
+                let root_path =
+                    PathBuf::from("/home/bigiri/.local/share/kactivitymanagerd/activities");
+                let script_filename = "activity_script";
+                sender.oneshot_command(async move {
+                    if let Err(e) =
+                        Activity::save_activities(&root_path, script_filename, &activities).await
+                    {
+                        eprintln!("{e}");
+                    }
+                    AppMsg::SaveFinished
+                })
+            }
+            AppMsg::SaveFinished => todo!(),
         }
     }
 }
@@ -187,9 +232,9 @@ impl SimpleComponent for AppModel {
 fn main() {
     let root_path = PathBuf::from("/home/bigiri/.local/share/kactivitymanagerd/activities");
     let script_filename = "activity_script";
-    let activities = Activity::from_env(&root_path, script_filename).unwrap_or_else(|e| {
-        eprintln!("Failed to load activity data: {e}");
-        std::process::exit(1);
-    });
-    relm4::RelmApp::new("kas-selector").run::<AppModel>(activities);
+    // let activities = Activity::from_env(&root_path, script_filename).unwrap_or_else(|e| {
+    //     eprintln!("Failed to load activity data: {e}");
+    //     std::process::exit(1);
+    // });
+    relm4::RelmApp::new("kas-selector").run::<AppModel>(vec![]);
 }
