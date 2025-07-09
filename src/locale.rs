@@ -84,3 +84,22 @@ impl Debug for FluentLocale {
         f.write_str("FluentLocal")
     }
 }
+
+// Allowed in tests
+#[allow(clippy::unwrap_used)]
+#[cfg(test)]
+mod test {
+    use asserting::{assert_that, prelude::AssertResult};
+
+    use super::*;
+
+    #[test]
+    fn us_translation_is_valid() {
+        let locale = FluentLocale::try_new("en-US");
+        assert_that!(locale)
+            .is_ok()
+            .satisfies_with_message("Title found in locale", |l| {
+                !l.clone().unwrap().text(Key::Title, None).is_empty()
+            });
+    }
+}

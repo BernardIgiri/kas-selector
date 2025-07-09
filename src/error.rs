@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum Application {
     #[error("Initialization failed for `{category}` due to `{cause}`")]
     FailedToInitialize {

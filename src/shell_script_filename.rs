@@ -46,3 +46,28 @@ impl ShellScriptFilename {
         }
     }
 }
+
+// Allowed in tests
+#[allow(clippy::unwrap_used)]
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn valid_shell_filenames() {
+        let f: ShellScriptFilename = "install.sh".parse().unwrap();
+        assert_eq!(f.as_str(), "install.sh");
+
+        let f: ShellScriptFilename = "x.sh".parse().unwrap();
+        assert_eq!(f.as_str(), "x.sh");
+    }
+
+    #[test]
+    fn invalid_shell_filenames() {
+        assert!("foo".parse::<ShellScriptFilename>().is_err());
+        assert!("bad/script.sh".parse::<ShellScriptFilename>().is_err());
+        assert!("".parse::<ShellScriptFilename>().is_err());
+        assert!("/etc/passwd".parse::<ShellScriptFilename>().is_err());
+        assert!("sh".repeat(300).parse::<ShellScriptFilename>().is_err()); // too long
+    }
+}
