@@ -6,3 +6,4 @@ event-stopped = Stopped
 open = Open
 exit = Exit
 save = Save
+error-save-failed = Could not save changes!

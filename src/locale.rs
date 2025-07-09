@@ -16,6 +16,7 @@ pub enum Key {
     Open,
     Exit,
     Save,
+    ErrorSaveFailed,
 }
 
 #[derive(Clone)]

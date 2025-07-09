@@ -38,9 +38,18 @@ struct AppModel {
     locale: FluentLocale,
     open_dialog: Controller<OpenDialog>,
     pending_event: ActivityEvent,
-    path_labels: HashMap<ActivityEvent, gtk::Label>,
+    is_dirty: bool,
+    is_loading: bool,
+    save_error_dialog_visible: bool,
 }
-
+#[derive(Debug)]
+struct AppWidgets {
+    root: gtk::Window,
+    path_labels: HashMap<ActivityEvent, gtk::Label>,
+    save_button: gtk::Button,
+    save_error_dialog: gtk::AlertDialog,
+    save_error_dialog_visible: bool,
+}
 #[derive(Debug)]
 enum AppMsg {
     ChooseActivity(usize),
@@ -50,7 +59,8 @@ enum AppMsg {
     ChooseScriptCancel,
     Exit,
     SaveStarted,
-    SaveFinished,
+    SaveFinished(Result<(), error::Application>),
+    CloseSaveErrorDialog,
 }
 #[derive(Debug)]
 struct AppInit {
@@ -58,51 +68,16 @@ struct AppInit {
     activities: Vec<Activity>,
 }
 
-#[relm4::component]
 impl Component for AppModel {
     type Init = AppInit;
     type Input = AppMsg;
     type Output = ();
     type CommandOutput = AppMsg;
+    type Root = gtk::Window;
+    type Widgets = AppWidgets;
 
-    view! {
-        #[root]
-        window = gtk::ApplicationWindow {
-            set_title: Some(&model.locale.text(locale::Key::Title, None)),
-            set_default_width: 600,
-            set_default_height: 400,
-
-            gtk::Box {
-                set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 12,
-                set_margin_all: 12,
-
-                #[name = "dropdown"]
-                gtk::DropDown::from_strings(&model.activities.iter().map(|a| a.name().as_str()).collect::<Vec<_>>()) {
-                    connect_selected_notify[sender] => move |dropdown| {
-                        sender.input(AppMsg::ChooseActivity(dropdown.selected() as usize))
-                    },
-                    set_selected: model.selected_activity_index as u32,
-                },
-
-                #[name = "events_box"]
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 6,
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 6,
-                    set_halign: gtk::Align::End,
-
-                    #[name = "exit_button"]
-                    gtk::Button::with_label(&model.locale.text(locale::Key::Exit, None)),
-                    #[name = "save_button"]
-                    gtk::Button::with_label(&model.locale.text(locale::Key::Save, None)),
-                }
-            }
-        }
+    fn init_root() -> Self::Root {
+        gtk::Window::default()
     }
 
     fn init(
@@ -122,24 +97,70 @@ impl Component for AppModel {
                 OpenDialogResponse::Accept(path) => AppMsg::ScriptChosen(path),
                 OpenDialogResponse::Cancel => AppMsg::ChooseScriptCancel,
             });
-
-        let mut model = Self {
+        let model = Self {
             config: init.config,
             activities: init.activities,
             selected_activity_index: 0,
             locale,
             open_dialog,
             pending_event: ActivityEvent::Activated,
-            path_labels: HashMap::new(),
+            is_dirty: false,
+            is_loading: false,
+            save_error_dialog_visible: false,
         };
-        let widgets = view_output!();
+        root.set_default_width(600);
+        root.set_default_height(400);
+        root.set_title(Some(model.locale.text(locale::Key::Title, None).as_str()));
+        relm4::view! {
+            save_error_dialog = gtk::AlertDialog {
+                set_modal: true,
+                set_message: &model.locale.text(locale::Key::ErrorSaveFailed, None),
+            },
+            container = gtk::Box {
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 12,
+                set_margin_all: 12,
+
+                gtk::DropDown::from_strings(&model.activities.iter().map(|a| a.name().as_str()).collect::<Vec<_>>()) {
+                    connect_selected_notify[sender] => move |dropdown| {
+                        sender.input(AppMsg::ChooseActivity(dropdown.selected() as usize))
+                    },
+                    set_selected: model.selected_activity_index as u32,
+                },
+
+                #[name = "events_box"]
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 6,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 6,
+                    set_halign: gtk::Align::End,
+                    set_valign: gtk::Align::End,
+                    set_vexpand: true,
+
+                    #[name = "exit_button"]
+                    gtk::Button::with_label(&model.locale.text(locale::Key::Exit, None)),
+                    #[name = "save_button"]
+                    gtk::Button::with_label(&model.locale.text(locale::Key::Save, None)),
+                }
+            }
+        }
+        root.set_child(Some(&container));
+        let mut path_labels = HashMap::new();
         let sender_clone = sender.clone();
-        widgets.save_button.connect_clicked(move |_| {
+        save_button.connect_clicked(move |_| {
             sender_clone.input(AppMsg::SaveStarted);
         });
         let sender_clone = sender.clone();
-        widgets.exit_button.connect_clicked(move |_| {
+        exit_button.connect_clicked(move |_| {
             sender_clone.input(AppMsg::Exit);
+        });
+        let sender_clone = sender.clone();
+        save_error_dialog.connect_cancel_button_notify(move |_| {
+            sender_clone.input(AppMsg::CloseSaveErrorDialog);
         });
 
         for event in ActivityEvent::iter() {
@@ -161,7 +182,7 @@ impl Component for AppModel {
             path_label.set_xalign(0.0);
             path_label.set_hexpand(true);
             row.append(&path_label);
-            model.path_labels.insert(event.clone(), path_label);
+            path_labels.insert(event.clone(), path_label);
 
             let button = gtk::Button::from_icon_name("edit");
             let event_clone = event.clone();
@@ -179,9 +200,38 @@ impl Component for AppModel {
             });
             row.append(&button);
 
-            widgets.events_box.append(&row);
+            events_box.append(&row);
         }
-        ComponentParts { model, widgets }
+        ComponentParts {
+            model,
+            widgets: Self::Widgets {
+                root,
+                path_labels,
+                save_button,
+                save_error_dialog,
+                save_error_dialog_visible: false,
+            },
+        }
+    }
+
+    fn update_view(&self, widgets: &mut Self::Widgets, _sender: ComponentSender<Self>) {
+        let activity = &self.activities[self.selected_activity_index];
+        for (event, label) in widgets.path_labels.iter() {
+            let path = activity
+                .event_scripts()
+                .get(event)
+                .map_or_else(|| "", |v| v.as_path().to_str().unwrap_or_default());
+            label.set_text(path);
+        }
+        let can_save = match (self.is_dirty, self.is_loading) {
+            (_, true) => false,
+            (true, _) => true,
+            _ => false,
+        };
+        widgets.save_button.set_sensitive(can_save);
+        if self.save_error_dialog_visible && !widgets.save_error_dialog_visible {
+            widgets.save_error_dialog.show(Some(&widgets.root));
+        }
     }
 
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
@@ -195,41 +245,41 @@ impl Component for AppModel {
                 self.open_dialog.emit(OpenDialogMsg::Open);
             }
             AppMsg::ScriptChosen(path_buf) => {
+                self.is_dirty = true;
                 self.activities[self.selected_activity_index]
-                    .set_script(self.pending_event.clone(), path_buf.clone());
-                #[allow(clippy::expect_used)]
-                self.path_labels
-                    .get(&self.pending_event)
-                    .expect("Path labels for all events should exist.")
-                    .set_text(path_buf.to_string_lossy().as_ref());
+                    .set_script(self.pending_event.clone(), path_buf);
             }
             AppMsg::ChooseScriptCancel => {}
             AppMsg::DeleteScript(activity_event) => {
-                self.activities[self.selected_activity_index].delete_script(activity_event.clone());
-                #[allow(clippy::expect_used)]
-                self.path_labels
-                    .get(&activity_event)
-                    .expect("Path labels for all events should exist.")
-                    .set_text("");
+                self.is_dirty = true;
+                self.activities[self.selected_activity_index].delete_script(activity_event);
             }
             AppMsg::Exit => {
-                std::process::exit(0);
+                relm4::main_application().quit();
             }
             AppMsg::SaveStarted => {
+                self.is_loading = true;
                 let activities = self.activities.clone();
                 let config = self.config.clone();
                 sender.oneshot_command(async move {
-                    if let Err(e) = Activity::save_activities(
+                    AppMsg::SaveFinished(Activity::save_activities(
                         config.root_path(),
                         config.script_filename(),
                         &activities,
-                    ) {
-                        eprintln!("{e}");
-                    }
-                    AppMsg::SaveFinished
+                    ))
                 })
             }
-            AppMsg::SaveFinished => todo!(),
+            AppMsg::SaveFinished(result) => {
+                self.is_dirty = false;
+                self.is_loading = false;
+                if let Err(e) = result {
+                    eprintln!("{e}");
+                    self.save_error_dialog_visible = true;
+                }
+            }
+            AppMsg::CloseSaveErrorDialog => {
+                self.save_error_dialog_visible = false;
+            }
         }
     }
 }
