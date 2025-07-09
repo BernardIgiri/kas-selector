@@ -241,18 +241,15 @@ impl Component for AppModel {
                 edit_button = gtk::Button::from_icon_name("edit"),
                 delete_button = gtk::Button::from_icon_name("delete"),
             }
-            let event_clone = event.clone();
             let sender_clone = sender.clone();
             edit_button.set_tooltip(&model.locale.text(locale::Key::Edit, None));
             edit_button.connect_clicked(move |_| {
-                sender_clone.input(AppMsg::ChooseScript(event_clone.clone()));
+                sender_clone.input(AppMsg::ChooseScript(event));
             });
-
-            let event_clone = event.clone();
             let sender_clone = sender.clone();
             delete_button.set_tooltip(&model.locale.text(locale::Key::Delete, None));
             delete_button.connect_clicked(move |_| {
-                sender_clone.input(AppMsg::DeleteScript(event_clone.clone()));
+                sender_clone.input(AppMsg::DeleteScript(event));
             });
 
             events_grid.attach(&event_label, 0, row as i32, 1, 1);
@@ -260,7 +257,7 @@ impl Component for AppModel {
             events_grid.attach(&edit_button, 2, row as i32, 1, 1);
             events_grid.attach(&delete_button, 3, row as i32, 1, 1);
 
-            path_labels.insert(event.clone(), path_label);
+            path_labels.insert(event, path_label);
         }
         ComponentParts {
             model,
@@ -294,7 +291,6 @@ impl Component for AppModel {
         _sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
-        dbg!(&message);
         let AppCmd::SaveFinished(result) = message;
         self.is_dirty = false;
         self.is_loading = false;
@@ -304,7 +300,6 @@ impl Component for AppModel {
         }
     }
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
-        dbg!(&message);
         match message {
             AppMsg::ChooseActivity(index) => {
                 self.selected_activity_index = index;
@@ -316,7 +311,7 @@ impl Component for AppModel {
             AppMsg::ScriptChosen(path_buf) => {
                 self.is_dirty = true;
                 self.activities[self.selected_activity_index]
-                    .set_script(self.pending_event.clone(), path_buf);
+                    .set_script(self.pending_event, path_buf);
             }
             AppMsg::ChooseScriptCancel => {}
             AppMsg::DeleteScript(activity_event) => {

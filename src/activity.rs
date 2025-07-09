@@ -53,7 +53,7 @@ pub struct Activity {
 
 impl Activity {
     pub fn get_script(&self, event: &ActivityEvent) -> Option<&PathBuf> {
-        self.event_scripts.get(&event)
+        self.event_scripts.get(event)
     }
     pub fn set_script(&mut self, event: ActivityEvent, script: PathBuf) {
         self.event_scripts.insert(event, script);
