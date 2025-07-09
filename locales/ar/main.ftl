@@ -1,0 +1,15 @@
+title = محدد نصوص أنشطة KDE
+event-activated = تم التفعيل
+event-deactivated = تم التعطيل
+event-started = تم البدء
+event-stopped = تم الإيقاف
+open = فتح
+cancel = إلغاء
+quit = خروج
+save = حفظ
+help = مساعدة
+edit = تحرير
+delete = حذف
+error-save-failed = تعذر حفظ التغييرات!
+saving-data = جاري حفظ البيانات...
+activity = نشاط

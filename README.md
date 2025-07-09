@@ -22,6 +22,7 @@ What’s even less known is that KDE supports **per-activity scripting**: you ca
 * ✅ Supports assigning `.sh` scripts to each activity's life-cycle events.
 * ✅ Displays activity names and events, not raw file paths.
 * ✅ Handles validation, linking, and cleanup of associated script files.
+* ✅ Supports multiple languages using [Project Fluent.](https://projectfluent.org/)
 * ✅ Designed for KDE Plasma 6.
 
 ## ⚙️ Environment Variables

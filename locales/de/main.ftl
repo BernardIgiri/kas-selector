@@ -1,0 +1,15 @@
+title = KDE-Aktivitätsskript-Auswahl
+event-activated = Aktiviert
+event-deactivated = Deaktiviert
+event-started = Gestartet
+event-stopped = Gestoppt
+open = Öffnen
+cancel = Abbrechen
+quit = Beenden
+save = Speichern
+help = Hilfe
+edit = Bearbeiten
+delete = Löschen
+error-save-failed = Änderungen konnten nicht gespeichert werden!
+saving-data = Daten werden gespeichert...
+activity = Aktivität

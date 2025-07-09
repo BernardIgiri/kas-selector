@@ -1,0 +1,15 @@
+title = KDE 活动脚本选择器
+event-activated = 已激活
+event-deactivated = 已停用
+event-started = 已启动
+event-stopped = 已停止
+open = 打开
+cancel = 取消
+quit = 退出
+save = 保存
+help = 帮助
+edit = 编辑
+delete = 删除
+error-save-failed = 无法保存更改！
+saving-data = 正在保存数据...
+activity = 活动

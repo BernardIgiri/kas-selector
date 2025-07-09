@@ -1,0 +1,15 @@
+title = Выбор скрипта активности KDE
+event-activated = Активировано
+event-deactivated = Деактивировано
+event-started = Запущено
+event-stopped = Остановлено
+open = Открыть
+cancel = Отмена
+quit = Выход
+save = Сохранить
+help = Помощь
+edit = Редактировать
+delete = Удалить
+error-save-failed = Не удалось сохранить изменения!
+saving-data = Сохранение данных...
+activity = Активность

@@ -1,0 +1,15 @@
+title = Sélecteur de script d'activité KDE
+event-activated = Activé
+event-deactivated = Désactivé
+event-started = Démarré
+event-stopped = Arrêté
+open = Ouvrir
+cancel = Annuler
+quit = Quitter
+save = Enregistrer
+help = Aide
+edit = Modifier
+delete = Supprimer
+error-save-failed = Impossible d'enregistrer les modifications !
+saving-data = Enregistrement des données...
+activity = Activité
