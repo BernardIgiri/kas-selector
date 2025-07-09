@@ -335,6 +335,17 @@ impl Component for AppModel {
     }
 }
 
+fn get_env_lang() -> String {
+    for var in ["LANGUAGE", "LC_MESSAGES", "LANG"] {
+        if let Ok(val) = std::env::var(var) {
+            if !val.is_empty() {
+                return val.split('.').next().unwrap_or("en_US").replace('_', "-");
+            }
+        }
+    }
+    "en-US".into()
+}
+
 fn main() {
     let root_path = std::env::var("KAS_ROOT").map_or_else(
         |_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(DEFAULT_KAS_PATH),
@@ -348,14 +359,7 @@ fn main() {
             eprintln!("Failed to load activity data: {e}");
             std::process::exit(1);
         });
-    let lang = std::env::var("LANGUAGE")
-        .or_else(|_| std::env::var("LC_MESSAGES"))
-        .or_else(|_| std::env::var("LANG"))
-        .unwrap_or_else(|_| "en_US.UTF-8".into())
-        .split('.')
-        .next()
-        .unwrap_or("en_US")
-        .replace('_', "-");
+    let lang = get_env_lang();
     relm4::RelmApp::new("kas-selector").run::<AppModel>(AppInit {
         config,
         activities,
