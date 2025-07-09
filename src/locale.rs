@@ -33,16 +33,16 @@ pub struct FluentLocale {
 impl FluentLocale {
     pub fn try_new(lang: &str) -> Result<Self, error::Application> {
         let lang_id: LanguageIdentifier = lang.parse().map_err(|_| error::BadInitData {
-            category: "Language",
+            category: "Language invalid",
             value: lang.into(),
         })?;
         let path = format!("locales/{lang_id}/main.ftl");
         let source = fs::read_to_string(&path).map_err(|_| error::BadInitData {
-            category: "Fluent file",
+            category: "Fluent file not found",
             value: path.clone(),
         })?;
         let resource = FluentResource::try_new(source).map_err(|_| error::BadInitData {
-            category: "Fluent syntax",
+            category: "Fluent syntax error",
             value: path.clone(),
         })?;
 

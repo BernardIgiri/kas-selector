@@ -2,6 +2,7 @@
 name = "kas-selector"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
 
 [dependencies]
 derive-getters = "0.5.0"
