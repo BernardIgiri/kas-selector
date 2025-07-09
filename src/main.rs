@@ -19,16 +19,15 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 use strum::IntoEnumIterator;
 
-fn get_kde_preferred_language() -> String {
-    std::env::var("LANGUAGE")
-        .or_else(|_| std::env::var("LC_MESSAGES"))
-        .or_else(|_| std::env::var("LANG"))
-        .unwrap_or_else(|_| "en_US.UTF-8".into())
-        .split('.')
-        .next()
-        .unwrap_or("en_US")
-        .replace('_', "-")
+const STYLE: &str = r#"
+.label {
+    font-weight: bold;
 }
+"#;
+const DEFAULT_KAS_PATH: &str = ".local/share/kactivitymanagerd/activities";
+const DEFAULT_SCRIPT_FILENAME: &str = "activity_script";
+const WINDOW_WIDTH: i32 = 450;
+const WINDOW_HEIGHT: i32 = 260;
 
 #[derive(Debug)]
 struct AppModel {
@@ -67,6 +66,7 @@ enum AppMsg {
 struct AppInit {
     config: Config,
     activities: Vec<Activity>,
+    lang: String,
 }
 
 impl AppModel {
@@ -91,8 +91,7 @@ impl Component for AppModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let lang = &get_kde_preferred_language();
-        let locale = FluentLocale::try_new(lang).unwrap_or_else(|e| {
+        let locale = FluentLocale::try_new(&init.lang).unwrap_or_else(|e| {
             eprintln!("Failed to initialize localization: {e}");
             std::process::exit(1);
         });
@@ -114,15 +113,25 @@ impl Component for AppModel {
             is_loading: false,
             save_error_dialog_visible: false,
         };
-        gtk::CssProvider::new().load_from_string(
-            r#"
-                    .title {
-                        font-weight: bold;
-                    }
-                "#,
+        let provider = gtk::CssProvider::new();
+        provider.load_from_string(STYLE);
+        let display = match gtk::gdk::Display::default().ok_or_else(|| error::FailedToInitialize {
+            category: "Display",
+            cause: "could not connect.".into(),
+        }) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        };
+        gtk::style_context_add_provider_for_display(
+            &display,
+            &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
-        root.set_default_width(600);
-        root.set_default_height(400);
+        root.set_default_width(WINDOW_WIDTH);
+        root.set_default_height(WINDOW_HEIGHT);
         root.set_title(Some(model.locale.text(locale::Key::Title, None).as_str()));
         relm4::view! {
             save_error_dialog = gtk::AlertDialog {
@@ -139,12 +148,13 @@ impl Component for AppModel {
                         sender.input(AppMsg::ChooseActivity(dropdown.selected() as usize))
                     },
                     set_selected: model.selected_activity_index as u32,
+                    set_tooltip: &model.locale.text(locale::Key::Activity, None),
                 },
 
-                #[name = "events_box"]
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 6,
+                #[name = "events_grid"]
+                gtk::Grid {
+                    set_row_spacing: 6,
+                    set_column_spacing: 2,
                 },
 
                 gtk::Box {
@@ -194,45 +204,47 @@ impl Component for AppModel {
             sender_clone.input(AppMsg::CloseSaveErrorDialog);
         });
 
-        for event in ActivityEvent::iter() {
-            let label_text = model.locale.text(event.as_key(), None);
+        for (row, event) in ActivityEvent::iter().enumerate() {
             let script_path = model
                 .activities
                 .get(model.selected_activity_index)
                 .and_then(|a| a.event_scripts().get(&event))
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
-
-            let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-
-            let label = gtk::Label::new(Some(&label_text));
-            label.set_xalign(0.0);
-            label.add_css_class("title");
-            row.append(&label);
-
-            let path_label = gtk::Label::new(Some(&script_path));
-            path_label.set_xalign(0.0);
-            path_label.set_hexpand(true);
-            row.append(&path_label);
-            path_labels.insert(event.clone(), path_label);
-
-            let button = gtk::Button::from_icon_name("edit");
+            relm4::view! {
+                event_label = gtk::Label {
+                    set_label: &model.locale.text(event.as_key(), None),
+                    set_halign: gtk::Align::Start,
+                    add_css_class: "label"
+                },
+                path_label = gtk::Label {
+                    set_label: &script_path,
+                    set_hexpand: true,
+                    set_halign: gtk::Align::Start,
+                },
+                edit_button = gtk::Button::from_icon_name("edit"),
+                delete_button = gtk::Button::from_icon_name("delete"),
+            }
             let event_clone = event.clone();
             let sender_clone = sender.clone();
-            button.connect_clicked(move |_| {
+            edit_button.set_tooltip(&model.locale.text(locale::Key::Edit, None));
+            edit_button.connect_clicked(move |_| {
                 sender_clone.input(AppMsg::ChooseScript(event_clone.clone()));
             });
-            row.append(&button);
 
-            let button = gtk::Button::from_icon_name("delete");
             let event_clone = event.clone();
             let sender_clone = sender.clone();
-            button.connect_clicked(move |_| {
+            delete_button.set_tooltip(&model.locale.text(locale::Key::Delete, None));
+            delete_button.connect_clicked(move |_| {
                 sender_clone.input(AppMsg::DeleteScript(event_clone.clone()));
             });
-            row.append(&button);
 
-            events_box.append(&row);
+            events_grid.attach(&event_label, 0, row as i32, 1, 1);
+            events_grid.attach(&path_label, 1, row as i32, 1, 1);
+            events_grid.attach(&edit_button, 2, row as i32, 1, 1);
+            events_grid.attach(&delete_button, 3, row as i32, 1, 1);
+
+            path_labels.insert(event.clone(), path_label);
         }
         ComponentParts {
             model,
@@ -312,13 +324,29 @@ impl Component for AppModel {
 }
 
 fn main() {
-    let root_path = PathBuf::from("/home/bigiri/.local/share/kactivitymanagerd/activities");
-    let script_filename = "activity_script";
-    let config = Config::new(root_path, script_filename.into());
+    let root_path = std::env::var("KAS_ROOT").map_or_else(
+        |_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(DEFAULT_KAS_PATH),
+        PathBuf::from,
+    );
+    let script_filename =
+        std::env::var("KAS_SCRIPT_NAME").unwrap_or_else(|_| DEFAULT_SCRIPT_FILENAME.into());
+    let config = Config::new(root_path, script_filename);
     let activities = Activity::from_env(config.root_path(), config.script_filename())
         .unwrap_or_else(|e| {
             eprintln!("Failed to load activity data: {e}");
             std::process::exit(1);
         });
-    relm4::RelmApp::new("kas-selector").run::<AppModel>(AppInit { config, activities });
+    let lang = std::env::var("LANGUAGE")
+        .or_else(|_| std::env::var("LC_MESSAGES"))
+        .or_else(|_| std::env::var("LANG"))
+        .unwrap_or_else(|_| "en_US.UTF-8".into())
+        .split('.')
+        .next()
+        .unwrap_or("en_US")
+        .replace('_', "-");
+    relm4::RelmApp::new("kas-selector").run::<AppModel>(AppInit {
+        config,
+        activities,
+        lang,
+    });
 }

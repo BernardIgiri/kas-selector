@@ -16,8 +16,11 @@ pub enum Key {
     Open,
     Exit,
     Save,
+    Edit,
+    Delete,
     ErrorSaveFailed,
     SavingData,
+    Activity,
 }
 
 #[derive(Clone)]
