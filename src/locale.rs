@@ -51,6 +51,7 @@ pub struct FluentLocale {
 impl FluentLocale {
     pub fn try_new(lang: &str) -> Result<Self, error::Application> {
         let locale_roots = locale_roots();
+        let lang = lang.split('-').next().unwrap_or(lang);
         let lang_id: LanguageIdentifier = lang.parse().map_err(|_| error::BadInitData {
             category: "Language invalid",
             value: lang.into(),
