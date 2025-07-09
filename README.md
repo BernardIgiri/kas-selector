@@ -2,7 +2,7 @@
 
 [![Build & Release](https://github.com/BernardIgiri/kas-selector/actions/workflows/release.yml/badge.svg)](https://github.com/BernardIgiri/kas-selector/actions/workflows/release.yml)
 
-**KAS Selector** is a [Relm4](https://github.com/Relm4/Relm4) base application that allows users to assign shell scripts to [KDE](https://kde.org/) Activity lifecycle events (e.g., `started`, `activated`, `deactivated`, `stopped`). It provides a simple graphical interface for managing these script bindings per activity and event.
+**KDE Activity Script Selector** is a [Relm4](https://github.com/Relm4/Relm4) base application that allows users to assign shell scripts to [KDE](https://kde.org/) Activity lifecycle events (e.g., `started`, `activated`, `deactivated`, `stopped`). It provides a simple graphical interface for managing these script bindings per activity and event.
 
 👉 [Download Here](#-download)
 
