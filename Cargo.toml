@@ -27,8 +27,9 @@ temp-env = "0.3.6"
 tempfile = "3.20.0"
 
 [package.metadata.deb]
-maintainer = "Your Name <you@example.com>"
-license-file = ["LICENSE", 0]
+maintainer = "Bernard Igiri <bernard.igiri@gmail.com>"
+license = "MIT"
+license-file = "LICENSE"
 extended-description = "A Relm4 app to assign scripts to KDE Activity lifecycle events."
 assets = [
     ["target/release/kas-selector", "usr/bin/", "755"],
