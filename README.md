@@ -49,6 +49,8 @@ wget "https://github.com/BernardIgiri/kas-selector/releases/download/v${x}/kas-s
 sudo dpkg -i "kas-selector_${x}-1_amd64.deb"
 ```
 
+**Run** `kas-selector`
+
 ## 🔨 Build Instructions
 
 Ensure you have the following installed:
