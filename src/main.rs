@@ -5,6 +5,7 @@ mod activity;
 mod config;
 mod error;
 mod locale;
+mod shell_script_filename;
 
 use activity::{Activity, ActivityEvent};
 use config::Config;
@@ -25,7 +26,8 @@ const STYLE: &str = r#"
 }
 "#;
 const DEFAULT_KAS_PATH: &str = ".local/share/kactivitymanagerd/activities";
-const DEFAULT_SCRIPT_FILENAME: &str = "activity_script";
+const DEFAULT_SCRIPT_FILENAME: &str = "activity_script.sh";
+const KAS_HELP_URL: &str = "https://github.com/BernardIgiri/kas-selector";
 const WINDOW_WIDTH: i32 = 500;
 const WINDOW_HEIGHT: i32 = 260;
 
@@ -58,9 +60,13 @@ enum AppMsg {
     ScriptChosen(PathBuf),
     ChooseScriptCancel,
     Exit,
-    SaveStarted,
-    SaveFinished(Result<(), error::Application>),
+    Help,
+    Save,
     CloseSaveErrorDialog,
+}
+#[derive(Debug)]
+enum AppCmd {
+    SaveFinished(Result<(), error::Application>),
 }
 #[derive(Debug)]
 struct AppInit {
@@ -75,11 +81,12 @@ impl AppModel {
     }
 }
 
+#[allow(clippy::expect_used)]
 impl Component for AppModel {
     type Init = AppInit;
     type Input = AppMsg;
     type Output = ();
-    type CommandOutput = AppMsg;
+    type CommandOutput = AppCmd;
     type Root = gtk::Window;
     type Widgets = AppWidgets;
 
@@ -91,10 +98,8 @@ impl Component for AppModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let locale = FluentLocale::try_new(&init.lang).unwrap_or_else(|e| {
-            eprintln!("Failed to initialize localization: {e}");
-            std::process::exit(1);
-        });
+        let locale =
+            FluentLocale::try_new(&init.lang).expect("Failed to initialize localization: {e}");
         let open_dialog = OpenDialog::builder()
             .transient_for_native(&root)
             .launch(OpenDialogSettings {
@@ -122,16 +127,7 @@ impl Component for AppModel {
         };
         let provider = gtk::CssProvider::new();
         provider.load_from_string(STYLE);
-        let display = match gtk::gdk::Display::default().ok_or_else(|| error::FailedToInitialize {
-            category: "Display",
-            cause: "could not connect.".into(),
-        }) {
-            Ok(d) => d,
-            Err(e) => {
-                eprintln!("{e}");
-                std::process::exit(1);
-            }
-        };
+        let display = gtk::gdk::Display::default().expect("Display should connect!");
         gtk::style_context_add_provider_for_display(
             &display,
             &provider,
@@ -186,9 +182,9 @@ impl Component for AppModel {
                     gtk::Box {
                         set_hexpand: true,
                     },
-                    #[name = "exit_button"]
+                    #[name = "quit_button"]
                     gtk::Button {
-                        set_label: &model.locale.text(locale::Key::Exit, None),
+                        set_label: &model.locale.text(locale::Key::Quit, None),
                         set_size_request: (80, -1),
                     },
                     #[name = "save_button"]
@@ -197,6 +193,10 @@ impl Component for AppModel {
                         set_sensitive: false,
                         set_size_request: (80, -1),
                     },
+                    #[name = "help_button"]
+                    gtk::Button::from_icon_name("help-about") {
+                        set_tooltip: &model.locale.text(locale::Key::Help, None),
+                    },
                 }
             }
         }
@@ -204,11 +204,15 @@ impl Component for AppModel {
         let mut path_labels = HashMap::new();
         let sender_clone = sender.clone();
         save_button.connect_clicked(move |_| {
-            sender_clone.input(AppMsg::SaveStarted);
+            sender_clone.input(AppMsg::Save);
         });
         let sender_clone = sender.clone();
-        exit_button.connect_clicked(move |_| {
+        quit_button.connect_clicked(move |_| {
             sender_clone.input(AppMsg::Exit);
+        });
+        let sender_clone = sender.clone();
+        help_button.connect_clicked(move |_| {
+            sender_clone.input(AppMsg::Help);
         });
         let sender_clone = sender.clone();
         save_error_dialog.connect_cancel_button_notify(move |_| {
@@ -285,6 +289,21 @@ impl Component for AppModel {
         }
         widgets.spinner.set_visible(self.is_loading);
     }
+    fn update_cmd(
+        &mut self,
+        message: Self::CommandOutput,
+        _sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
+        dbg!(&message);
+        let AppCmd::SaveFinished(result) = message;
+        self.is_dirty = false;
+        self.is_loading = false;
+        if let Err(e) = result {
+            eprintln!("Save failed due to: {e}");
+            self.save_error_dialog_visible = true;
+        }
+    }
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         dbg!(&message);
         match message {
@@ -308,25 +327,22 @@ impl Component for AppModel {
             AppMsg::Exit => {
                 relm4::main_application().quit();
             }
-            AppMsg::SaveStarted => {
+            AppMsg::Help => {
+                if let Err(e) = open::that(KAS_HELP_URL) {
+                    eprintln!("Could not show help due to: {e}");
+                };
+            }
+            AppMsg::Save => {
                 self.is_loading = true;
                 let activities = self.activities.clone();
                 let config = self.config.clone();
-                sender.oneshot_command(async move {
-                    AppMsg::SaveFinished(Activity::save_activities(
+                sender.spawn_oneshot_command(move || {
+                    AppCmd::SaveFinished(Activity::save_activities(
                         config.root_path(),
                         config.script_filename(),
                         &activities,
                     ))
                 })
-            }
-            AppMsg::SaveFinished(result) => {
-                self.is_dirty = false;
-                self.is_loading = false;
-                if let Err(e) = result {
-                    eprintln!("{e}");
-                    self.save_error_dialog_visible = true;
-                }
             }
             AppMsg::CloseSaveErrorDialog => {
                 self.save_error_dialog_visible = false;
@@ -346,19 +362,19 @@ fn get_env_lang() -> String {
     "en-US".into()
 }
 
+#[allow(clippy::expect_used)]
 fn main() {
     let root_path = std::env::var("KAS_ROOT").map_or_else(
         |_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(DEFAULT_KAS_PATH),
         PathBuf::from,
     );
-    let script_filename =
-        std::env::var("KAS_SCRIPT_NAME").unwrap_or_else(|_| DEFAULT_SCRIPT_FILENAME.into());
+    let script_filename = std::env::var("KAS_SCRIPT_NAME")
+        .unwrap_or_else(|_| DEFAULT_SCRIPT_FILENAME.into())
+        .parse()
+        .expect("Script filename validation check.");
     let config = Config::new(root_path, script_filename);
     let activities = Activity::from_env(config.root_path(), config.script_filename())
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to load activity data: {e}");
-            std::process::exit(1);
-        });
+        .expect("Loading activity data.");
     let lang = get_env_lang();
     relm4::RelmApp::new("kas-selector").run::<AppModel>(AppInit {
         config,
