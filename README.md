@@ -1,16 +1,10 @@
 # KAS Selector
 
+[![Build & Release](https://github.com/BernardIgiri/kas-selector/actions/workflows/release.yml/badge.svg)](https://github.com/BernardIgiri/kas-selector/actions/workflows/release.yml)
+
 **KAS Selector** is a [Relm4](https://github.com/Relm4/Relm4) base application that allows users to assign shell scripts to [KDE](https://kde.org/) Activity lifecycle events (e.g., `started`, `activated`, `deactivated`, `stopped`). It provides a simple graphical interface for managing these script bindings per activity and event.
 
-​	👉 [Download It Now](#-download)
-
-## ✨ Features
-
-* Automatically detects existing KDE activities.
-* Supports assigning `.sh` scripts to each activity's lifecycle events.
-* Displays activity names and events, not raw file paths.
-* Handles validation, linking, and cleanup of associated script files.
-* Designed for KDE Plasma 6.
+👉 [Download Here](#-download)
 
 ## 🤩 Background & Motivation
 
@@ -19,6 +13,14 @@ KDE’s "Activity" feature is one of its most powerful but least known tools. It
 What’s even less known is that KDE supports **per-activity scripting**: you can run custom shell scripts when an activity is started, stopped, activated, or deactivated. However, this feature is largely undocumented and lacks any graphical interface for configuration.
 
 **KAS Selector** exists to make this hidden power accessible. It provides a clean UI for linking scripts to activity events, lowering the barrier to using Activities as a true automation and workflow engine in KDE.
+
+## ✨ Features
+
+* ✅ Automatically detects existing KDE activities.
+* ✅ Supports assigning `.sh` scripts to each activity's life-cycle events.
+* ✅ Displays activity names and events, not raw file paths.
+* ✅ Handles validation, linking, and cleanup of associated script files.
+* ✅ Designed for KDE Plasma 6.
 
 ## ⚙️ Environment Variables
 
@@ -30,13 +32,23 @@ The following environment variables can be used to customize the behavior of the
 | `KAS_SCRIPT_NAME`           | The filename of the script to assign (must be a valid `.sh` file).                        | `kas-script.sh`                                   |
 | `LANGUAGE` or `LC_MESSAGES` | Used to determine the preferred UI language via Fluent localization system.               | System locale                                     |
 
+## 💾 Download
+
+Pre-built `.deb` packages are available on the [GitHub Releases page](https://github.com/BernardIgiri/kas-selector/releases/latest).
+
+To install:
+
+```bash
+wget https://github.com/BernardIgiri/kas-selector/releases/latest/download/kas-selector_0.X.0-1_amd64.deb
+sudo dpkg -i kas-selector_0.X.0-1_amd64.deb
+```
+
 ## 🔨 Build Instructions
 
 Ensure you have the following installed:
 
-* Rust (version 1.88 or later)
-* GTK4 development libraries
-* CMake and other native build tools
+* [Rust (version 1.88 or later)](https://www.rust-lang.org/tools/install)
+* [GTK4 development libraries](https://gtk-rs.org/gtk4-rs/git/book/installation_linux.html)
 
 Then run:
 
@@ -69,13 +81,3 @@ For example:
 ## 💡More KDE Tips
 
 For more KDE Tips and Trick, especially with "Activities", checkout my blog post [Optimizing KDE Activities For Max Productivity!](https://yequalscode.com/posts/kde-productivity-tips)
-
-## 💾 Download
-
-Prebuilt `.deb` packages are available on the [GitHub Releases page](https://github.com/BernardIgiri/kas-selector/releases/latest).
-
-To install:
-
-```bash
-wget https://github.com/BernardIgiri/kas-selector/releases/latest/download/kas-selector_0.X.0-1_amd64.deb
-sudo dpkg -i kas-selector_0.X.0-1_amd64.deb

@@ -17,10 +17,12 @@ type EventMap = HashMap<ActivityEvent, PathBuf>;
 type ScriptMap = HashMap<String, EventMap>;
 
 #[allow(clippy::expect_used)]
-static ACTIVITY_DATA_RX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"^[^"]*"(?<id>[^"]+)", "(?<name>[^"]+)""#).expect("ValidRx"));
+static ACTIVITY_DATA_RX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\s*\[\w+\]\s+(?P<id>[a-f0-9\-]+)\s+(?P<name>.+?)\s+\([^\n]+\)\s*$")
+        .expect("ValidRx")
+});
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, EnumIter, Display, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, Display, IntoStaticStr)]
 #[strum(serialize_all = "kebab-case")]
 pub enum ActivityEvent {
     Activated,
@@ -45,10 +47,14 @@ impl ActivityEvent {
 pub struct Activity {
     name: String,
     id: String,
+    #[getter(skip)]
     event_scripts: EventMap,
 }
 
 impl Activity {
+    pub fn get_script(&self, event: &ActivityEvent) -> Option<&PathBuf> {
+        self.event_scripts.get(&event)
+    }
     pub fn set_script(&mut self, event: ActivityEvent, script: PathBuf) {
         self.event_scripts.insert(event, script);
     }
@@ -59,13 +65,8 @@ impl Activity {
         root_folder: &Path,
         script_filename: &ShellScriptFilename,
     ) -> Result<Vec<Self>, error::Application> {
-        let output = Command::new("qdbus")
-            .args([
-                "--literal",
-                "org.kde.ActivityManager",
-                "/ActivityManager/Activities",
-                "ListActivitiesWithInformation",
-            ])
+        let output = Command::new("kactivities-cli")
+            .arg("--list-activities")
             .output()
             .map_err(|e| error::Application::FailedToInitialize {
                 category: "QBus data",
@@ -75,7 +76,7 @@ impl Activity {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(error::Application::FailedToInitialize {
-                category: "qdbus ListActivitiesWithInformation",
+                category: "kactivities-cli --list-activities",
                 cause: stderr.trim().to_string(),
             });
         }
@@ -157,18 +158,9 @@ impl Activity {
         data: &str,
         scripts: ScriptMap,
     ) -> Result<Vec<Self>, error::Application> {
-        let cleaned = data
-            .trim_start_matches(|c| c != '{')
-            .trim_start_matches('{')
-            .trim_end_matches("}]");
-
-        let segments = cleaned.split("], [");
-
-        let mut activities = Vec::new();
-
-        for segment in segments {
-            let line = segment.trim_matches(|c| c == '[' || c == ']');
-            if let Some(cap) = ACTIVITY_DATA_RX.captures(line) {
+        data.lines()
+            .filter_map(|line| ACTIVITY_DATA_RX.captures(line))
+            .map(|cap| {
                 let id = cap
                     .name("id")
                     .ok_or_else(|| error::FailedToInitialize {
@@ -186,15 +178,13 @@ impl Activity {
                     .as_str()
                     .to_string();
                 let event_scripts = scripts.get(&id).cloned().unwrap_or_default();
-                activities.push(Self {
+                Ok(Self {
                     name,
                     id,
                     event_scripts,
-                });
-            }
-        }
-
-        Ok(activities)
+                })
+            })
+            .collect()
     }
     pub fn save_activities(
         root: &Path,
@@ -243,8 +233,20 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
+    fn debug_regex_capture() {
+        let line = "[RUNNING] abc-12d-a Activity A (icon-a)";
+        let cap = ACTIVITY_DATA_RX.captures(line);
+        assert!(cap.is_some(), "Regex failed to match: {line}");
+    }
+    #[test]
     fn from_activity_data_contains_exactly() {
-        let sample_data = r#"[Argument: a(ssssi) {[Argument: (ssssi) "some-id-a", "Activity A", "Ignore this", "ignore", 2], [Argument: (ssssi) "some-id-b", "activity B", "Stuff", "otherstuff", 13], [Argument: (ssssi) "some-id-d", "Long Named Activity", "Stuff", "otherstuff", 1], [Argument: (ssssi) "some-id-e", "Filing Taxes & Accounting", "Taxes", "taxes", 2]}]"#;
+        let sample_data = r#"
+            [RUNNING] abc-12d-a Activity A (icon-a)
+            [STOPPED] abc-12d-b activity B (icon-b)
+            [CURRENT] abc-12d-d Long Named Activity (icon-d)
+            [RUNNING] abc-12d-e Filing Taxes & Accounting (icon-e)
+        "#
+        .trim();
 
         let activities = Activity::from_activity_data(sample_data, ScriptMap::new()).unwrap();
 
@@ -254,18 +256,22 @@ mod tests {
             .collect();
 
         assert_that!(actual).contains_exactly([
-            ("Activity A".to_string(), "some-id-a".to_string()),
-            ("activity B".to_string(), "some-id-b".to_string()),
-            ("Long Named Activity".to_string(), "some-id-d".to_string()),
+            ("Activity A".to_string(), "abc-12d-a".to_string()),
+            ("activity B".to_string(), "abc-12d-b".to_string()),
+            ("Long Named Activity".to_string(), "abc-12d-d".to_string()),
             (
                 "Filing Taxes & Accounting".to_string(),
-                "some-id-e".to_string(),
+                "abc-12d-e".to_string(),
             ),
         ]);
     }
     #[test]
     fn from_activity_data_populates_event_scripts() {
-        let sample_data = r#"[Argument: a(ssssi) {[Argument: (ssssi) "some-id-a", "Activity A", "x", "y", 1], [Argument: (ssssi) "some-id-b", "Activity B", "x", "y", 1]}]"#;
+        let sample_data = r#"
+            [RUNNING] abc-12d-a Activity A (icon-a)
+            [RUNNING] abc-12d-b Activity B (icon-b)
+        "#
+        .trim();
 
         let mut map = ScriptMap::new();
 
@@ -285,25 +291,25 @@ mod tests {
             PathBuf::from("/scripts/b/deactivated/kas-script.sh"),
         );
 
-        map.insert("some-id-a".into(), events_a.clone());
-        map.insert("some-id-b".into(), events_b.clone());
+        map.insert("abc-12d-a".into(), events_a.clone());
+        map.insert("abc-12d-b".into(), events_b.clone());
 
         let activities = Activity::from_activity_data(sample_data, map).unwrap();
 
         assert_that!(activities.len()).is_equal_to(2);
 
-        let a = activities.iter().find(|a| a.id() == "some-id-a").unwrap();
-        assert_that!(a.event_scripts()).is_equal_to(&events_a);
+        let a = activities.iter().find(|a| a.id() == "abc-12d-a").unwrap();
+        assert_that!(a.event_scripts.clone()).is_equal_to(events_a);
 
-        let b = activities.iter().find(|a| a.id() == "some-id-b").unwrap();
-        assert_that!(b.event_scripts()).is_equal_to(&events_b);
+        let b = activities.iter().find(|a| a.id() == "abc-12d-b").unwrap();
+        assert_that!(b.event_scripts.clone()).is_equal_to(events_b);
     }
     #[test]
     fn load_scripts_reads_symlink_structure() {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
-        let activity_id = "some-id-x";
+        let activity_id = "abc-12d-x";
         let event_name = "activated";
 
         let activity_dir = root.join(activity_id).join(event_name);

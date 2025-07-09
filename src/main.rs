@@ -223,7 +223,7 @@ impl Component for AppModel {
             let script_path = model
                 .activities
                 .get(model.selected_activity_index)
-                .and_then(|a| a.event_scripts().get(&event))
+                .and_then(|a| a.get_script(&event))
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
             relm4::view! {
@@ -278,8 +278,7 @@ impl Component for AppModel {
         let activity = &self.activities[self.selected_activity_index];
         for (event, label) in widgets.path_labels.iter() {
             let path = activity
-                .event_scripts()
-                .get(event)
+                .get_script(event)
                 .map_or_else(|| "", |v| v.as_path().to_str().unwrap_or_default());
             label.set_text(path);
         }
