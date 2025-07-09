@@ -1,8 +1,10 @@
-# KAS Selector
+# KDE Activity Script Selector
 
 [![Build & Release](https://github.com/BernardIgiri/kas-selector/actions/workflows/release.yml/badge.svg)](https://github.com/BernardIgiri/kas-selector/actions/workflows/release.yml)
 
 **KDE Activity Script Selector** is a [Relm4](https://github.com/Relm4/Relm4) base application that allows users to assign shell scripts to [KDE](https://kde.org/) Activity lifecycle events (e.g., `started`, `activated`, `deactivated`, `stopped`). It provides a simple graphical interface for managing these script bindings per activity and event.
+
+![screenshot](screenshot.png)
 
 👉 [Download Here](#-download)
 
@@ -10,9 +12,9 @@
 
 KDE’s "Activity" feature is one of its most powerful but least known tools. It allows users to segment their workflows into distinct contexts (separate from virtual desktops) with different wallpapers, window rules, and app arrangements.
 
-What’s even less known is that KDE supports **per-activity scripting**: you can run custom shell scripts when an activity is started, stopped, activated, or deactivated. However, this feature is largely undocumented and lacks any graphical interface for configuration.
+What’s even less known is that KDE supports **per-activity scripting**: you can run custom shell scripts when an activity is started, stopped, activated, or deactivated. However, this feature is not well undocumented and lacks any graphical interface for configuration.
 
-**KAS Selector** exists to make this hidden power accessible. It provides a clean UI for linking scripts to activity events, lowering the barrier to using Activities as a true automation and workflow engine in KDE.
+**KDE Activity Script Selector** exists to make this hidden power accessible. It provides a clean UI for linking scripts to activity events, lowering the barrier to using Activities as a true automation and workflow engine in KDE.
 
 ## ✨ Features
 
