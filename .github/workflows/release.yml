@@ -1,0 +1,45 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deb:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/gtk-rs/gtk4-rs/gtk4:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+
+      - name: Verify version matches tag
+        run: |
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          CARGO_VERSION=$(grep '^version =' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "Version mismatch: Git tag is $TAG_VERSION but Cargo.toml has $CARGO_VERSION"
+            exit 1
+          fi
+
+      - name: Build .deb package
+        run: cargo deb
+
+      - name: Upload .deb to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: target/debian/*.deb
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

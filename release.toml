@@ -1,0 +1,6 @@
+sign-commit = true
+sign-tag = true
+push = true
+publish = false
+tag-name = "v{{version}}"
+consolidate-commits = true
