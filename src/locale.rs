@@ -14,6 +14,7 @@ pub enum Key {
     EventStarted,
     EventStopped,
     Open,
+    Cancel,
     Exit,
     Save,
     Edit,

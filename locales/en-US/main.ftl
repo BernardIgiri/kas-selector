@@ -4,6 +4,7 @@ event-deactivated = Deactivated
 event-started = Started
 event-stopped = Stopped
 open = Open
+cancel = Cancel
 exit = Exit
 save = Save
 edit = Edit

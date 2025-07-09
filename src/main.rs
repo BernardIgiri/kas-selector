@@ -26,7 +26,7 @@ const STYLE: &str = r#"
 "#;
 const DEFAULT_KAS_PATH: &str = ".local/share/kactivitymanagerd/activities";
 const DEFAULT_SCRIPT_FILENAME: &str = "activity_script";
-const WINDOW_WIDTH: i32 = 450;
+const WINDOW_WIDTH: i32 = 500;
 const WINDOW_HEIGHT: i32 = 260;
 
 #[derive(Debug)]
@@ -97,7 +97,14 @@ impl Component for AppModel {
         });
         let open_dialog = OpenDialog::builder()
             .transient_for_native(&root)
-            .launch(OpenDialogSettings::default())
+            .launch(OpenDialogSettings {
+                folder_mode: false,
+                cancel_label: locale.text(locale::Key::Cancel, None),
+                accept_label: locale.text(locale::Key::Open, None),
+                create_folders: false,
+                is_modal: true,
+                filters: Vec::new(),
+            })
             .forward(sender.input_sender(), |response| match response {
                 OpenDialogResponse::Accept(path) => AppMsg::ScriptChosen(path),
                 OpenDialogResponse::Cancel => AppMsg::ChooseScriptCancel,
@@ -154,7 +161,7 @@ impl Component for AppModel {
                 #[name = "events_grid"]
                 gtk::Grid {
                     set_row_spacing: 6,
-                    set_column_spacing: 2,
+                    set_column_spacing: 6,
                 },
 
                 gtk::Box {
@@ -166,7 +173,7 @@ impl Component for AppModel {
                     #[name = "spinner"]
                     gtk::Box {
                         set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 2,
+                        set_spacing: 6,
                         set_visible: false,
 
                         gtk::Spinner {
@@ -180,11 +187,15 @@ impl Component for AppModel {
                         set_hexpand: true,
                     },
                     #[name = "exit_button"]
-                    gtk::Button::with_label(&model.locale.text(locale::Key::Exit, None)),
+                    gtk::Button {
+                        set_label: &model.locale.text(locale::Key::Exit, None),
+                        set_size_request: (80, -1),
+                    },
                     #[name = "save_button"]
                     gtk::Button {
                         set_label: &model.locale.text(locale::Key::Save, None),
                         set_sensitive: false,
+                        set_size_request: (80, -1),
                     },
                 }
             }
@@ -221,6 +232,7 @@ impl Component for AppModel {
                     set_label: &script_path,
                     set_hexpand: true,
                     set_halign: gtk::Align::Start,
+                    set_ellipsize: gtk::pango::EllipsizeMode::End,
                 },
                 edit_button = gtk::Button::from_icon_name("edit"),
                 delete_button = gtk::Button::from_icon_name("delete"),
