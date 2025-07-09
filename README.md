@@ -36,11 +36,14 @@ The following environment variables can be used to customize the behavior of the
 
 Pre-built `.deb` packages are available on the [GitHub Releases page](https://github.com/BernardIgiri/kas-selector/releases/latest).
 
-To install:
+To install version `X` :
 
 ```bash
-wget https://github.com/BernardIgiri/kas-selector/releases/latest/download/kas-selector_0.X.0-1_amd64.deb
-sudo dpkg -i kas-selector_0.X.0-1_amd64.deb
+# Replace this with the version number (e.g. 0.3.1)
+x=0.3.1
+
+wget "https://github.com/BernardIgiri/kas-selector/releases/download/v${x}/kas-selector_${x}-1_amd64.deb"
+sudo dpkg -i "kas-selector_${x}-1_amd64.deb"
 ```
 
 ## 🔨 Build Instructions
