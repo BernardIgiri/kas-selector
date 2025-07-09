@@ -799,7 +799,7 @@ dependencies = [
 
 [[package]]
 name = "kas-selector"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "asserting",
  "derive-getters",
