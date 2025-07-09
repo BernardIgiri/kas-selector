@@ -49,6 +49,7 @@ struct AppWidgets {
     save_button: gtk::Button,
     save_error_dialog: gtk::AlertDialog,
     save_error_dialog_visible: bool,
+    spinner: gtk::Box,
 }
 #[derive(Debug)]
 enum AppMsg {
@@ -68,6 +69,12 @@ struct AppInit {
     activities: Vec<Activity>,
 }
 
+impl AppModel {
+    const fn can_save(&self) -> bool {
+        self.is_dirty && !self.is_loading
+    }
+}
+
 impl Component for AppModel {
     type Init = AppInit;
     type Input = AppMsg;
@@ -79,7 +86,6 @@ impl Component for AppModel {
     fn init_root() -> Self::Root {
         gtk::Window::default()
     }
-
     fn init(
         init: Self::Init,
         root: Self::Root,
@@ -108,6 +114,13 @@ impl Component for AppModel {
             is_loading: false,
             save_error_dialog_visible: false,
         };
+        gtk::CssProvider::new().load_from_string(
+            r#"
+                    .title {
+                        font-weight: bold;
+                    }
+                "#,
+        );
         root.set_default_width(600);
         root.set_default_height(400);
         root.set_title(Some(model.locale.text(locale::Key::Title, None).as_str()));
@@ -137,14 +150,32 @@ impl Component for AppModel {
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 6,
-                    set_halign: gtk::Align::End,
                     set_valign: gtk::Align::End,
                     set_vexpand: true,
 
+                    #[name = "spinner"]
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 2,
+                        set_visible: false,
+
+                        gtk::Spinner {
+                            set_spinning: true,
+                        },
+                        gtk::Label {
+                            set_label: &model.locale.text(locale::Key::SavingData, None),
+                        }
+                    },
+                    gtk::Box {
+                        set_hexpand: true,
+                    },
                     #[name = "exit_button"]
                     gtk::Button::with_label(&model.locale.text(locale::Key::Exit, None)),
                     #[name = "save_button"]
-                    gtk::Button::with_label(&model.locale.text(locale::Key::Save, None)),
+                    gtk::Button {
+                        set_label: &model.locale.text(locale::Key::Save, None),
+                        set_sensitive: false,
+                    },
                 }
             }
         }
@@ -176,6 +207,7 @@ impl Component for AppModel {
 
             let label = gtk::Label::new(Some(&label_text));
             label.set_xalign(0.0);
+            label.add_css_class("title");
             row.append(&label);
 
             let path_label = gtk::Label::new(Some(&script_path));
@@ -210,10 +242,10 @@ impl Component for AppModel {
                 save_button,
                 save_error_dialog,
                 save_error_dialog_visible: false,
+                spinner,
             },
         }
     }
-
     fn update_view(&self, widgets: &mut Self::Widgets, _sender: ComponentSender<Self>) {
         let activity = &self.activities[self.selected_activity_index];
         for (event, label) in widgets.path_labels.iter() {
@@ -223,17 +255,12 @@ impl Component for AppModel {
                 .map_or_else(|| "", |v| v.as_path().to_str().unwrap_or_default());
             label.set_text(path);
         }
-        let can_save = match (self.is_dirty, self.is_loading) {
-            (_, true) => false,
-            (true, _) => true,
-            _ => false,
-        };
-        widgets.save_button.set_sensitive(can_save);
+        widgets.save_button.set_sensitive(self.can_save());
         if self.save_error_dialog_visible && !widgets.save_error_dialog_visible {
             widgets.save_error_dialog.show(Some(&widgets.root));
         }
+        widgets.spinner.set_visible(self.is_loading);
     }
-
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         dbg!(&message);
         match message {

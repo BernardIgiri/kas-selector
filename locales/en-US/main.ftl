@@ -7,3 +7,4 @@ open = Open
 exit = Exit
 save = Save
 error-save-failed = Could not save changes!
+saving-data = Saving data...
