@@ -3,6 +3,9 @@ name = "kas-selector"
 version = "0.3.0"
 edition = "2024"
 rust-version = "1.88"
+license = "MIT"
+license-file = "LICENSE"
+repository = "https://github.com/BernardIgiri/kas-selector"
 
 [dependencies]
 derive-getters = "0.5.0"
@@ -28,8 +31,7 @@ tempfile = "3.20.0"
 
 [package.metadata.deb]
 maintainer = "Bernard Igiri <bernard.igiri@gmail.com>"
-license = "MIT"
-license-file = "LICENSE"
+license-file = ["LICENSE", 0]
 extended-description = "A Relm4 app to assign scripts to KDE Activity lifecycle events."
 assets = [
     ["target/release/kas-selector", "usr/bin/", "755"],
