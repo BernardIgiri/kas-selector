@@ -11,6 +11,7 @@ derive_more = { version = "2.0.1", features = ["full"] }
 fluent-bundle = "0.16.0"
 fluent-resmgr = "0.0.8"
 gtk = { version = "0.9.7", package = "gtk4", features = ["v4_14"] }
+indexmap = "2.10.0"
 open = "5.3.2"
 regex = "1.11.1"
 relm4 = "0.9.1"
@@ -22,4 +23,14 @@ unic-langid = "0.9.6"
 [dev-dependencies]
 asserting = "0.9.0"
 pretty_assertions = "1.4.1"
+temp-env = "0.3.6"
 tempfile = "3.20.0"
+
+[package.metadata.deb]
+maintainer = "Your Name <you@example.com>"
+license-file = ["LICENSE", 0]
+extended-description = "A Relm4 app to assign scripts to KDE Activity lifecycle events."
+assets = [
+    ["target/release/kas-selector", "usr/bin/", "755"],
+    ["locales/**", "usr/share/kas-selector/locales/", "644"]
+]
