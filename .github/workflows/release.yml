@@ -22,7 +22,17 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install cargo-deb
-        run: cargo install cargo-deb
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Run tests with nextest
+        run: cargo nextest run --all-targets --all-features
 
       - name: Verify version matches tag
         run: |

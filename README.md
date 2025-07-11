@@ -57,6 +57,7 @@ Ensure you have the following installed:
 
 * [Rust (version 1.88 or later)](https://www.rust-lang.org/tools/install)
 * [GTK4 development libraries](https://gtk-rs.org/gtk4-rs/git/book/installation_linux.html)
+* [cargo-nextest](https://nexte.st)
 
 Then run:
 

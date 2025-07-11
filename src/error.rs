@@ -2,13 +2,18 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
 pub enum Application {
-    #[error("Initialization failed for `{category}` due to `{cause}`")]
-    FailedToInitialize {
-        category: &'static str,
-        cause: String,
+    #[error("Command `{command}` failed wiht: `{error_text}`")]
+    CommandFailed {
+        command: &'static str,
+        error_text: String,
     },
     #[error("Incorrect `{category}` value `{value}` found.")]
-    BadInitData {
+    InvalidValue {
+        category: &'static str,
+        value: String,
+    },
+    #[error("The value `{value}` is not a currently supported {category}.")]
+    UnsupportedValue {
         category: &'static str,
         value: String,
     },

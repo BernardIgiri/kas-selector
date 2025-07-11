@@ -40,7 +40,7 @@ impl FromStr for ShellScriptFilename {
 
 impl ShellScriptFilename {
     fn error(s: &str) -> Application {
-        Application::BadInitData {
+        Application::InvalidValue {
             category: "ShellScriptFilename",
             value: s.to_owned(),
         }

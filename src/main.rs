@@ -10,7 +10,7 @@ mod shell_script_filename;
 use activity::{Activity, ActivityEvent};
 use config::Config;
 use gtk::prelude::*;
-use locale::FluentLocale;
+use locale::{DEFAULT_LOCALE, FluentLocale};
 use relm4::prelude::*;
 use relm4_components::open_dialog::{
     OpenDialog, OpenDialogMsg, OpenDialogResponse, OpenDialogSettings,
@@ -353,7 +353,7 @@ fn get_env_lang() -> String {
             }
         }
     }
-    "en-US".into()
+    DEFAULT_LOCALE.into()
 }
 
 #[allow(clippy::expect_used)]

@@ -806,6 +806,7 @@ dependencies = [
  "derive-new",
  "derive_more",
  "fluent-bundle",
+ "fluent-langneg",
  "fluent-resmgr",
  "gtk4",
  "indexmap",

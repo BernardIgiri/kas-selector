@@ -1,10 +1,14 @@
 use fluent_bundle::{FluentArgs, FluentResource, concurrent::FluentBundle};
+use fluent_langneg::{NegotiationStrategy, convert_vec_str_to_langids_lossy, negotiate_languages};
 use indexmap::IndexSet;
 use std::{env, fmt::Debug, fs, path::PathBuf, sync::Arc};
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 use unic_langid::LanguageIdentifier;
 
 use crate::error;
+
+pub const DEFAULT_LOCALE: &str = "en-US";
+pub const AVAILABLE_LOCALES: [&str; 7] = ["ar", "de", "en-US", "es", "fr", "ru", "zh"];
 
 fn locale_root_prefix(p: &str) -> String {
     let p = p.trim();
@@ -21,6 +25,31 @@ fn locale_roots() -> Vec<String> {
             .map(locale_root_prefix),
     );
     seen.into_iter().collect()
+}
+
+fn negotiated_lang_from_str(lang: &str) -> Result<LanguageIdentifier, error::Application> {
+    let lang_id: LanguageIdentifier = lang.parse().map_err(|_| error::InvalidValue {
+        category: "Language invalid",
+        value: lang.into(),
+    })?;
+    #[allow(clippy::expect_used)]
+    let default = DEFAULT_LOCALE
+        .parse()
+        .expect("Default language id should be parseable.");
+    let available = convert_vec_str_to_langids_lossy(AVAILABLE_LOCALES);
+    Ok(negotiate_languages(
+        &[&lang_id],
+        &available,
+        Some(&default),
+        NegotiationStrategy::Lookup,
+    )
+    .first()
+    .cloned()
+    .ok_or_else(|| error::UnsupportedValue {
+        category: "langauge",
+        value: lang.to_string(),
+    })?
+    .clone())
 }
 
 #[derive(EnumString, EnumIter, Display, Debug)]
@@ -51,11 +80,7 @@ pub struct FluentLocale {
 impl FluentLocale {
     pub fn try_new(lang: &str) -> Result<Self, error::Application> {
         let locale_roots = locale_roots();
-        let lang = lang.split('-').next().unwrap_or(lang);
-        let lang_id: LanguageIdentifier = lang.parse().map_err(|_| error::BadInitData {
-            category: "Language invalid",
-            value: lang.into(),
-        })?;
+        let lang_id = negotiated_lang_from_str(lang)?;
         let (source, path) = locale_roots
             .iter()
             .map(|root| {
@@ -69,11 +94,11 @@ impl FluentLocale {
                 )
             })
             .find_map(|(result, path)| result.ok().map(|source| (source, path)))
-            .ok_or_else(|| error::BadInitData {
-                category: "Fluent file not found",
+            .ok_or_else(|| error::UnsupportedValue {
+                category: "Fluent file",
                 value: locale_roots.join(", "),
             })?;
-        let resource = FluentResource::try_new(source).map_err(|_| error::BadInitData {
+        let resource = FluentResource::try_new(source).map_err(|_| error::InvalidValue {
             category: "Fluent syntax error",
             value: path.clone(),
         })?;
@@ -81,14 +106,14 @@ impl FluentLocale {
         let mut bundle = FluentBundle::new_concurrent(vec![lang_id]);
         bundle
             .add_resource(resource)
-            .map_err(|_| error::BadInitData {
+            .map_err(|_| error::InvalidValue {
                 category: "Fluent bundle",
                 value: path.clone(),
             })?;
         for key in Key::iter() {
             if !bundle.has_message(key.to_string().as_str()) {
-                return Err(error::BadInitData {
-                    category: "Fluent key missing",
+                return Err(error::UnsupportedValue {
+                    category: "Fluent key",
                     value: key.to_string(),
                 });
             }
@@ -121,68 +146,71 @@ impl Debug for FluentLocale {
 #[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod test {
-    use std::collections::HashSet;
-
     use asserting::prelude::*;
     use temp_env::with_var;
 
     use super::*;
 
     #[test]
-    fn us_translation_is_valid() {
-        let locale = FluentLocale::try_new("en-US");
-        assert_that!(locale)
-            .is_ok()
-            .satisfies_with_message("Title found in locale", |l| {
-                !l.clone().unwrap().text(Key::Title, None).is_empty()
-            });
+    fn available_locales_match_folder() {
+        let locale_folders = fs::read_dir("locales").unwrap().filter_map(|entry| {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            match path.file_name().and_then(|n| n.to_str()) {
+                Some(name) if path.is_dir() => Some(name.to_string()),
+                _ => None,
+            }
+        });
+        assert_that!(AVAILABLE_LOCALES).contains_exactly_in_any_order(locale_folders);
+    }
+    #[test]
+    fn all_translations_are_valid() {
+        for lang in AVAILABLE_LOCALES {
+            assert_that!(lang)
+                .described_as(lang)
+                .satisfies_with_message("Is retrievable from negotiation", |lang| {
+                    negotiated_lang_from_str(lang).unwrap()
+                        == lang.parse::<LanguageIdentifier>().unwrap()
+                })
+                .extracting(FluentLocale::try_new)
+                .is_ok()
+                .extracting(|locale| locale.unwrap())
+                .satisfies_with_message("Title found in locale", |locale| {
+                    !locale.text(Key::Title, None).is_empty()
+                });
+        }
     }
     #[test]
     fn locale_roots_with_custom_xdg_dirs() {
         with_var("XDG_DATA_DIRS", Some("/one:/two:/usr/share"), || {
             let roots = locale_roots();
-            assert!(
-                roots.contains(&"locales".to_string()),
-                "Missing dev path: 'locales'"
-            );
-            assert!(
-                roots.contains(&"/one/kas-selector/locales".to_string()),
-                "Missing transformed XDG path: /one/kas-selector/locales"
-            );
-            assert!(
-                roots.contains(&"/two/kas-selector/locales".to_string()),
-                "Missing transformed XDG path: /two/kas-selector/locales"
-            );
-            assert!(
-                roots.contains(&"/usr/local/share/kas-selector/locales".to_string()),
-                "Missing fallback path: /usr/local/share/kas-selector/locales"
-            );
-            assert!(
-                roots.contains(&"/usr/share/kas-selector/locales".to_string()),
-                "Missing fallback path: /usr/share/kas-selector/locales"
-            );
-            let unique: HashSet<_> = roots.iter().collect();
-            assert_eq!(
-                roots.len(),
-                unique.len(),
-                "Duplicate entries found in locale_roots"
-            );
+            assert_that!(&roots)
+                .contains_all_of([
+                    "locales",
+                    "/one/kas-selector/locales",
+                    "/two/kas-selector/locales",
+                    "/usr/local/share/kas-selector/locales",
+                    "/usr/share/kas-selector/locales",
+                ])
+                .described_as("no duplicates")
+                .contains_only_once(&roots);
         });
     }
     #[test]
     fn locale_roots_with_empty_env() {
         with_var("XDG_DATA_DIRS", Option::<&str>::None, || {
-            let roots = locale_roots();
-            assert!(roots.contains(&"locales".to_string()));
-            assert!(roots.contains(&"/usr/local/share/kas-selector/locales".to_string()));
-            assert!(roots.contains(&"/usr/share/kas-selector/locales".to_string()));
+            assert_that!(locale_roots()).contains_all_of([
+                "locales".to_string(),
+                "/usr/local/share/kas-selector/locales".to_string(),
+                "/usr/share/kas-selector/locales".to_string(),
+            ]);
         });
     }
     #[test]
     fn locale_roots_is_in_priority_order() {
         with_var("XDG_DATA_DIRS", Some("/one:/two:/three"), || {
-            let roots = locale_roots();
-            let order = [
+            let root_list = locale_roots();
+            let order_list = [
                 "locales",
                 "/usr/local/share",
                 "/usr/share",
@@ -190,8 +218,10 @@ mod test {
                 "/two",
                 "/three",
             ];
-            for (i, prefix) in order.iter().enumerate() {
-                assert_that!(roots[i].clone()).starts_with(prefix.to_string());
+            for (i, (root, prefix)) in root_list.iter().zip(order_list).enumerate() {
+                assert_that!(root)
+                    .described_as(format!("index: {i}"))
+                    .starts_with(prefix);
             }
         });
     }

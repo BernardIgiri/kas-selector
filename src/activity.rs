@@ -68,16 +68,16 @@ impl Activity {
         let output = Command::new("kactivities-cli")
             .arg("--list-activities")
             .output()
-            .map_err(|e| error::Application::FailedToInitialize {
-                category: "QBus data",
-                cause: e.to_string(),
+            .map_err(|e| error::Application::CommandFailed {
+                command: "kactivities-cli",
+                error_text: e.to_string(),
             })?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(error::Application::FailedToInitialize {
-                category: "kactivities-cli --list-activities",
-                cause: stderr.trim().to_string(),
+            let error_text = String::from_utf8_lossy(&output.stderr).to_string();
+            return Err(error::Application::CommandFailed {
+                command: "kactivities-cli",
+                error_text,
             });
         }
 
@@ -90,12 +90,12 @@ impl Activity {
         script_filename: &ShellScriptFilename,
     ) -> Result<ScriptMap, error::Application> {
         let mut scripts = ScriptMap::new();
-        for entry in fs::read_dir(root).map_err(|e| error::BadInitData {
+        for entry in fs::read_dir(root).map_err(|e| error::InvalidValue {
             category: "reading root script directory",
             value: e.to_string(),
         })? {
             let activity_dir = entry
-                .map_err(|e| error::BadInitData {
+                .map_err(|e| error::InvalidValue {
                     category: "reading entry in root script directory",
                     value: e.to_string(),
                 })?
@@ -106,7 +106,7 @@ impl Activity {
             }
             let activity_id = activity_dir
                 .file_name()
-                .ok_or_else(|| error::BadInitData {
+                .ok_or_else(|| error::InvalidValue {
                     category: "reading activity folder name",
                     value: activity_dir.to_string_lossy().to_string(),
                 })?
@@ -114,12 +114,12 @@ impl Activity {
                 .to_string();
 
             let mut event_map = EventMap::new();
-            for event_entry in fs::read_dir(&activity_dir).map_err(|e| error::BadInitData {
+            for event_entry in fs::read_dir(&activity_dir).map_err(|e| error::InvalidValue {
                 category: "reading event folder list",
                 value: e.to_string(),
             })? {
                 let event_path = event_entry
-                    .map_err(|e| error::BadInitData {
+                    .map_err(|e| error::InvalidValue {
                         category: "reading event folder entry",
                         value: e.to_string(),
                     })?
@@ -129,7 +129,7 @@ impl Activity {
                 }
                 let event_name = event_path
                     .file_name()
-                    .ok_or_else(|| error::BadInitData {
+                    .ok_or_else(|| error::InvalidValue {
                         category: "reading event folder name",
                         value: event_path.to_string_lossy().to_string(),
                     })?
@@ -163,17 +163,17 @@ impl Activity {
             .map(|cap| {
                 let id = cap
                     .name("id")
-                    .ok_or_else(|| error::FailedToInitialize {
+                    .ok_or_else(|| error::InvalidValue {
                         category: "Activity Data id",
-                        cause: "missing".into(),
+                        value: data.to_string(),
                     })?
                     .as_str()
                     .to_string();
                 let name = cap
                     .name("name")
-                    .ok_or_else(|| error::FailedToInitialize {
+                    .ok_or_else(|| error::InvalidValue {
                         category: "Activity Data name",
-                        cause: "missing".into(),
+                        value: data.to_string(),
                     })?
                     .as_str()
                     .to_string();
