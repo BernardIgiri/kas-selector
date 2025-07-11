@@ -9,7 +9,7 @@ use std::{
 
 use derive_getters::Getters;
 use regex::Regex;
-use strum::{Display, EnumIter, IntoStaticStr};
+use strum::{Display, EnumIter, IntoEnumIterator, IntoStaticStr};
 
 use crate::{error, locale, shell_script_filename::ShellScriptFilename};
 
@@ -192,16 +192,10 @@ impl Activity {
         activities: &[Self],
     ) -> Result<(), error::Application> {
         for activity in activities {
-            for (event, script_path) in &activity.event_scripts {
+            for event in ActivityEvent::iter() {
+                let script = activity.get_script(&event);
                 let dest_dir = root.join(&activity.id).join(event.to_string());
                 let dest_path = dest_dir.join(script_filename.as_str());
-
-                fs::create_dir_all(&dest_dir).map_err(|_| error::SaveDataError {
-                    activity: activity.name().clone(),
-                    event: event.into(),
-                    script_path: dest_path.to_string_lossy().into(),
-                })?;
-
                 if dest_path.exists() {
                     fs::remove_file(&dest_path).map_err(|_| error::SaveDataError {
                         activity: activity.name().clone(),
@@ -209,12 +203,18 @@ impl Activity {
                         script_path: dest_path.to_string_lossy().into(),
                     })?;
                 }
-
-                symlink(script_path, &dest_path).map_err(|_| error::SaveDataError {
-                    activity: activity.name().clone(),
-                    event: event.into(),
-                    script_path: dest_path.to_string_lossy().into(),
-                })?;
+                if let Some(script_path) = script {
+                    fs::create_dir_all(&dest_dir).map_err(|_| error::SaveDataError {
+                        activity: activity.name().clone(),
+                        event: event.into(),
+                        script_path: dest_path.to_string_lossy().into(),
+                    })?;
+                    symlink(script_path, &dest_path).map_err(|_| error::SaveDataError {
+                        activity: activity.name().clone(),
+                        event: event.into(),
+                        script_path: dest_path.to_string_lossy().into(),
+                    })?;
+                }
             }
         }
 
@@ -354,5 +354,34 @@ mod tests {
 
         let target = fs::read_link(link_path).unwrap();
         assert_eq!(target, source_script);
+    }
+    #[test]
+    fn save_activities_removes_unlinked_scripts() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+
+        let source_script = root.join("hello.sh");
+        fs::write(&source_script, "#!/bin/sh\necho hello").unwrap();
+
+        // Manually create a stale symlink that should be removed
+        let link_dir = root.join("a-1/started");
+        fs::create_dir_all(&link_dir).unwrap();
+        let link_path = link_dir.join("kas-script.sh");
+        symlink(&source_script, &link_path).unwrap();
+        assert!(link_path.exists(), "Expected initial symlink to be present");
+
+        // Now save an activity without a script for that event
+        let activity = Activity {
+            name: "TestActivity".into(),
+            id: "a-1".into(),
+            event_scripts: EventMap::new(),
+        };
+
+        Activity::save_activities(root, &"kas-script.sh".parse().unwrap(), &[activity]).unwrap();
+
+        assert!(
+            !link_path.exists(),
+            "Expected symlink to be removed when event is unset"
+        );
     }
 }
