@@ -236,7 +236,7 @@ impl Component for AppModel {
                     set_label: &script_path,
                     set_hexpand: true,
                     set_halign: gtk::Align::Start,
-                    set_ellipsize: gtk::pango::EllipsizeMode::End,
+                    set_ellipsize: gtk::pango::EllipsizeMode::Start,
                 },
                 edit_button = gtk::Button::from_icon_name("edit"),
                 delete_button = gtk::Button::from_icon_name("delete"),

@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fs,
+    fs::{self, read_link},
     os::unix::fs::symlink,
     path::{Path, PathBuf},
     process::Command,
@@ -142,8 +142,9 @@ impl Activity {
                     "stopped" => Some(ActivityEvent::Stopped),
                     _ => None,
                 } {
-                    let script_path = event_path.join(script_filename.as_str());
-                    if script_path.exists() {
+                    if let Some(script_path) =
+                        get_script_path(&activity_id, root, script_filename, &event)
+                    {
                         event_map.insert(event, script_path);
                     }
                 }
@@ -184,7 +185,11 @@ impl Activity {
                     event_scripts,
                 })
             })
-            .collect()
+            .collect::<Result<Vec<Self>, error::Application>>()
+            .map(|mut list| {
+                list.sort_by_key(|activity| activity.name().to_lowercase());
+                list
+            })
     }
     pub fn save_activities(
         root: &Path,
@@ -194,8 +199,12 @@ impl Activity {
         for activity in activities {
             for event in ActivityEvent::iter() {
                 let script = activity.get_script(&event);
-                let dest_dir = root.join(&activity.id).join(event.to_string());
-                let dest_path = dest_dir.join(script_filename.as_str());
+                let dest_path = get_script_dest_path(&activity.id, root, script_filename, &event);
+                let dest_dir = dest_path.parent().ok_or_else(|| error::SaveDataError {
+                    activity: activity.name().clone(),
+                    event: event.into(),
+                    script_path: dest_path.to_string_lossy().into(),
+                })?;
                 if dest_path.exists() {
                     fs::remove_file(&dest_path).map_err(|_| error::SaveDataError {
                         activity: activity.name().clone(),
@@ -204,7 +213,7 @@ impl Activity {
                     })?;
                 }
                 if let Some(script_path) = script {
-                    fs::create_dir_all(&dest_dir).map_err(|_| error::SaveDataError {
+                    fs::create_dir_all(dest_dir).map_err(|_| error::SaveDataError {
                         activity: activity.name().clone(),
                         event: event.into(),
                         script_path: dest_path.to_string_lossy().into(),
@@ -220,6 +229,31 @@ impl Activity {
 
         Ok(())
     }
+}
+
+fn get_script_dest_path(
+    activity_id: &String,
+    root: &Path,
+    script_filename: &ShellScriptFilename,
+    event: &ActivityEvent,
+) -> PathBuf {
+    root.join(activity_id)
+        .join(event.to_string())
+        .join(script_filename.as_str())
+}
+fn get_script_path(
+    activity_id: &String,
+    root: &Path,
+    script_filename: &ShellScriptFilename,
+    event: &ActivityEvent,
+) -> Option<PathBuf> {
+    read_link(get_script_dest_path(
+        activity_id,
+        root,
+        script_filename,
+        event,
+    ))
+    .ok()
 }
 
 // Allowed in tests
@@ -258,11 +292,11 @@ mod tests {
         assert_that!(actual).contains_exactly([
             ("Activity A".to_string(), "abc-12d-a".to_string()),
             ("activity B".to_string(), "abc-12d-b".to_string()),
-            ("Long Named Activity".to_string(), "abc-12d-d".to_string()),
             (
                 "Filing Taxes & Accounting".to_string(),
                 "abc-12d-e".to_string(),
             ),
+            ("Long Named Activity".to_string(), "abc-12d-d".to_string()),
         ]);
     }
     #[test]
@@ -327,7 +361,7 @@ mod tests {
         let event_map = result.get(activity_id).unwrap();
 
         assert_that!(event_map.len()).is_equal_to(1);
-        assert_that!(event_map.get(&ActivityEvent::Activated).unwrap()).is_equal_to(&symlink_path);
+        assert_that!(event_map.get(&ActivityEvent::Activated).unwrap()).is_equal_to(&actual_script);
     }
     #[test]
     fn save_activities_writes_symlink_structure() {
