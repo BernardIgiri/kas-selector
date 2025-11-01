@@ -10,21 +10,26 @@ use crate::error;
 pub const DEFAULT_LOCALE: &str = "en-US";
 pub const AVAILABLE_LOCALES: [&str; 7] = ["ar", "de", "en-US", "es", "fr", "ru", "zh"];
 
-fn locale_root_prefix(p: &str) -> String {
-    let p = p.trim();
-    format!("{p}/kas-selector/locales")
+fn locale_root_prefix(p: &str) -> Result<PathBuf, error::Application> {
+    let mut p: PathBuf = p.parse().map_err(|_| error::InvalidValue {
+        category: "locale path prefix",
+        value: p.to_string(),
+    })?;
+    p.push("kas-selector/locales");
+    Ok(p)
 }
 
-fn locale_roots() -> Vec<String> {
-    let mut seen = IndexSet::from(["locales".to_string()]);
-    seen.extend(["/usr/local/share", "/usr/share"].map(locale_root_prefix));
-    seen.extend(
-        env::var("XDG_DATA_DIRS")
-            .unwrap_or_default()
-            .split(':')
-            .map(locale_root_prefix),
-    );
-    seen.into_iter().collect()
+fn locale_roots() -> Result<Vec<PathBuf>, error::Application> {
+    let mut path_set = IndexSet::from([PathBuf::from("locales")]);
+    let mut raw_strs = vec!["/usr/local/share", "/usr/share"];
+    let xdg = env::var("XDG_DATA_DIRS").unwrap_or_default();
+    raw_strs.extend(xdg.split(':'));
+    let path_strs: Vec<PathBuf> = raw_strs
+        .into_iter()
+        .map(locale_root_prefix)
+        .collect::<Result<Vec<_>, _>>()?;
+    path_set.extend(path_strs);
+    Ok(path_set.into_iter().collect())
 }
 
 fn negotiated_lang_from_str(lang: &str) -> Result<LanguageIdentifier, error::Application> {
@@ -79,7 +84,7 @@ pub struct FluentLocale {
 
 impl FluentLocale {
     pub fn try_new(lang: &str) -> Result<Self, error::Application> {
-        let locale_roots = locale_roots();
+        let locale_roots = locale_roots()?;
         let lang_id = negotiated_lang_from_str(lang)?;
         let (source, path) = locale_roots
             .iter()
@@ -96,7 +101,11 @@ impl FluentLocale {
             .find_map(|(result, path)| result.ok().map(|source| (source, path)))
             .ok_or_else(|| error::UnsupportedValue {
                 category: "Fluent file",
-                value: locale_roots.join(", "),
+                value: locale_roots
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect::<Vec<String>>()
+                    .join(", "),
             })?;
         let resource = FluentResource::try_new(source).map_err(|_| error::InvalidValue {
             category: "Fluent syntax error",
@@ -183,7 +192,7 @@ mod test {
     #[test]
     fn locale_roots_with_custom_xdg_dirs() {
         with_var("XDG_DATA_DIRS", Some("/one:/two:/usr/share"), || {
-            let roots = locale_roots();
+            let roots = locale_roots().unwrap();
             assert_that!(&roots)
                 .contains_all_of([
                     "locales",
@@ -199,7 +208,7 @@ mod test {
     #[test]
     fn locale_roots_with_empty_env() {
         with_var("XDG_DATA_DIRS", Option::<&str>::None, || {
-            assert_that!(locale_roots()).contains_all_of([
+            assert_that!(locale_roots().unwrap()).contains_all_of([
                 "locales".to_string(),
                 "/usr/local/share/kas-selector/locales".to_string(),
                 "/usr/share/kas-selector/locales".to_string(),
@@ -209,7 +218,7 @@ mod test {
     #[test]
     fn locale_roots_is_in_priority_order() {
         with_var("XDG_DATA_DIRS", Some("/one:/two:/three"), || {
-            let root_list = locale_roots();
+            let root_list = locale_roots().unwrap();
             let order_list = [
                 "locales",
                 "/usr/local/share",
@@ -219,7 +228,7 @@ mod test {
                 "/three",
             ];
             for (i, (root, prefix)) in root_list.iter().zip(order_list).enumerate() {
-                assert_that!(root)
+                assert_that!(root.to_string_lossy())
                     .described_as(format!("index: {i}"))
                     .starts_with(prefix);
             }

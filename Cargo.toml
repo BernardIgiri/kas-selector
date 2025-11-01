@@ -2,7 +2,7 @@
 name = "kas-selector"
 version = "0.5.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.91"
 license-file = "LICENSE"
 repository = "https://github.com/BernardIgiri/kas-selector"
 
@@ -11,14 +11,14 @@ derive-getters = "0.5.0"
 derive-new = "0.7.0"
 derive_more = { version = "2.0.1", features = ["full"] }
 fluent-bundle = "0.16.0"
-fluent-langneg = "0.13.0"
+fluent-langneg = "0.13"
 fluent-resmgr = "0.0.8"
-gtk = { version = "0.9.7", package = "gtk4", features = ["v4_14"] }
+gtk = { version = "0.10.2", package = "gtk4", features = ["v4_14"] }
 indexmap = "2.10.0"
 open = "5.3.2"
 regex = "1.11.1"
-relm4 = "0.9.1"
-relm4-components = "0.9.1"
+relm4 = "0.10.0"
+relm4-components = "0.10.0"
 strum = { version = "0.27.1", features = ["derive"] }
 thiserror = "2.0.12"
 unic-langid = "0.9.6"

@@ -141,12 +141,10 @@ impl Activity {
                     "started" => Some(ActivityEvent::Started),
                     "stopped" => Some(ActivityEvent::Stopped),
                     _ => None,
-                } {
-                    if let Some(script_path) =
-                        get_script_path(&activity_id, root, script_filename, &event)
-                    {
-                        event_map.insert(event, script_path);
-                    }
+                } && let Some(script_path) =
+                    get_script_path(&activity_id, root, script_filename, &event)
+                {
+                    event_map.insert(event, script_path);
                 }
             }
             if !event_map.is_empty() {

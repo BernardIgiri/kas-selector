@@ -347,10 +347,10 @@ impl Component for AppModel {
 
 fn get_env_lang() -> String {
     for var in ["LANGUAGE", "LC_MESSAGES", "LANG"] {
-        if let Ok(val) = std::env::var(var) {
-            if !val.is_empty() {
-                return val.split('.').next().unwrap_or("en_US").replace('_', "-");
-            }
+        if let Ok(val) = std::env::var(var)
+            && !val.is_empty()
+        {
+            return val.split('.').next().unwrap_or("en_US").replace('_', "-");
         }
     }
     DEFAULT_LOCALE.into()
